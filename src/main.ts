@@ -177,3 +177,8 @@ if (room && room.length === CODE_LENGTH && [...room].every((c) => CODE_LETTERS.i
   history.replaceState(null, '', location.pathname)
   play(nav, quiz, joinMode(room))
 }
+
+// Installed to a home screen, the device keeps working offline.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {})
+}
