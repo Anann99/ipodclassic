@@ -95,6 +95,15 @@ export function createRelay() {
     socket.on('pong', () => alive.add(socket))
 
     socket.on('message', (raw) => {
+      // A backstop: no message, however malformed, may take the relay down.
+      try {
+        handle(raw)
+      } catch {
+        send(socket, { t: 'error', reason: 'bad-message' })
+      }
+    })
+
+    const handle = (raw: unknown) => {
       let message: ClientMessage
       try {
         message = JSON.parse(String(raw))
@@ -130,7 +139,7 @@ export function createRelay() {
         room = target
         self = message.id
       }
-    })
+    }
 
     socket.on('close', () => {
       const member = room && self ? room.members.get(self) : undefined

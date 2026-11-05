@@ -20,6 +20,8 @@ type Wire =
       answers: string[]
       /** Milliseconds since the question opened on the referee. */
       elapsed: number
+      /** Players whose answer is in, so a player who rejoins stays locked. */
+      answered: string[]
       players: Player[]
     }
   | {
@@ -44,7 +46,8 @@ function toWire(s: Snapshot): Wire {
   const answers = s.order.map((i) => question?.a[i] ?? '')
   const { n, total, players } = s
   if (s.phase === 'question') {
-    return { phase: 'question', n, total, text, answers, elapsed: s.elapsed, players }
+    const { elapsed, answered } = s
+    return { phase: 'question', n, total, text, answers, elapsed, answered, players }
   }
   const { correct, picks, gained } = s
   return { phase: 'reveal', n, total, text, answers, correct, picks, gained, players }
@@ -160,6 +163,8 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
       SOUND.ask()
       announce(`${next.text} ${next.answers[0] ?? ''}`)
     }
+    // Back in a question this player already answered (after a reload): keep it locked.
+    if (next.phase === 'question' && picked === undefined && next.answered.includes(me)) picked = -1
     if (next.phase === 'reveal' && prev?.phase !== 'reveal') {
       // The referee's record of this player's pick is what counts.
       picked = next.picks[me]
