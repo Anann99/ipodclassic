@@ -1,21 +1,23 @@
 // Binds the on-screen wheel, the keyboard and the mouse wheel to one stream of inputs.
 
+import { settings } from '../os/settings.ts'
 import { click, unlockAudio } from './feedback.ts'
 import { type Button, HOLD_MS, type Input, TICK, WheelGesture } from './wheel.ts'
 
 /** Held arrow keys turn the wheel at this speed, in radians per second. */
 const KEY_TURN_SPEED = 4.5
-/** Scroll distance in CSS pixels that equals one detent. */
-const SCROLL_PER_TICK = 50
+/** Smooth (trackpad) scrolling distance in CSS pixels that equals one detent. */
+const SCROLL_PER_TICK = 40
+/** A single scroll event at least this large is a mouse notch: exactly one detent. */
+const NOTCH = 50
 
 const KEYS: Record<string, Button> = {
   Enter: 'select',
-  ' ': 'select',
+  ' ': 'play',
   Escape: 'menu',
   Backspace: 'menu',
-  p: 'play',
-  '[': 'prev',
-  ']': 'next',
+  ',': 'prev',
+  '.': 'next',
 }
 
 export function bindControls(wheel: HTMLElement, emit: (input: Input) => void): void {
@@ -29,7 +31,7 @@ export function bindControls(wheel: HTMLElement, emit: (input: Input) => void): 
           .querySelector(`[data-button="${input.button}"]`)
           ?.classList.toggle('pressed', input.type === 'press')
       }
-      if (input.type === 'press') click()
+      if (input.type === 'press') click('press')
       emit(input)
     }
   }
@@ -49,7 +51,16 @@ export function bindControls(wheel: HTMLElement, emit: (input: Input) => void): 
     send(cancelled ? gesture.cancel(e.pointerId) : gesture.up(e.pointerId))
   }
 
+  // Tapping the wheel toggles this hidden switch; on iOS that plays the system haptic.
+  const haptic = wheel.querySelector('.haptic') as HTMLInputElement | null
+  haptic?.addEventListener('click', (e) => e.stopPropagation())
+  haptic?.addEventListener('focus', () => haptic.blur())
+  settings.watch((s) => {
+    if (haptic) haptic.disabled = !s.haptics
+  })
+
   wheel.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
     e.preventDefault()
     unlockAudio()
     const inputs = gesture.down(e.pointerId, ...local(e), e.timeStamp)
@@ -111,21 +122,37 @@ export function bindControls(wheel: HTMLElement, emit: (input: Input) => void): 
   })
   window.addEventListener('blur', () => turning.clear())
 
-  // Mouse wheel and trackpad: scrolling anywhere turns the wheel.
+  // Mouse wheel and trackpad: scrolling anywhere turns the wheel. A mouse notch is one
+  // detent; smooth trackpad scrolling accumulates.
   let scrolled = 0
   window.addEventListener(
     'wheel',
     (e) => {
+      if (e.ctrlKey) return
       e.preventDefault()
       const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1)
-      emit({ type: 'turn', delta: (px / SCROLL_PER_TICK) * TICK })
+      if (!px) return
+      emit({
+        type: 'turn',
+        delta: (Math.sign(px) * Math.min(Math.abs(px), 120) * TICK) / SCROLL_PER_TICK,
+      })
+      if (Math.abs(px) >= NOTCH) {
+        scrolled = 0
+        emit({ type: 'tick', dir: Math.sign(px) as 1 | -1 })
+        return
+      }
       scrolled += px
-      while (Math.abs(scrolled) >= SCROLL_PER_TICK) {
+      let count = 0
+      while (Math.abs(scrolled) >= SCROLL_PER_TICK && count < 3) {
         const dir = Math.sign(scrolled) as 1 | -1
         scrolled -= dir * SCROLL_PER_TICK
+        count += 1
         emit({ type: 'tick', dir })
       }
     },
     { passive: false },
   )
+
+  // Safari pinch gestures, which touch-action alone does not always stop.
+  document.addEventListener('gesturestart', (e) => e.preventDefault())
 }

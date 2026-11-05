@@ -16,13 +16,15 @@ export type Input =
 export const TICKS_PER_TURN = 24
 export const TICK = (2 * Math.PI) / TICKS_PER_TURN
 /** Rotation that turns a touch into a scroll, so it can no longer be a button tap. */
-export const SCROLL_SLOP = TICK * 0.6
+export const SCROLL_SLOP = (6 * Math.PI) / 180
+/** Backward travel that counts as a reversal; smaller wobbles do not undo progress. */
+const REVERSAL = (2 * Math.PI) / 180
 /** Ring buttons fire on release, or after being held this long without scrolling. */
 export const HOLD_MS = 350
 /** Center button radius as a fraction of the wheel radius. */
 export const CENTER_RADIUS = 0.38
-/** Angles are unreliable this close to the middle, so moves there are ignored. */
-const MIN_ANGLE_RADIUS = 0.2
+/** Angles are unreliable this close to the middle, so tracking pauses there. */
+const MIN_ANGLE_RADIUS = 0.25
 /** Touches starting beyond the rim are ignored. */
 const OUTER_RADIUS = 1.06
 /** Absorbs float drift so exact detent angles count. */
@@ -34,9 +36,13 @@ type Pointer =
       zone: 'ring'
       button: Button
       start: number
+      /** Last angle, or NaN while the finger is in the dead zone. */
       angle: number
       travel: number
       ticks: number
+      /** Direction of travel, and backward travel since it last changed. */
+      dir: 0 | 1 | -1
+      back: number
       scrolling: boolean
       held: boolean
     }
@@ -78,6 +84,8 @@ export class WheelGesture {
       angle: Math.atan2(y, x),
       travel: 0,
       ticks: 0,
+      dir: 0,
+      back: 0,
       scrolling: false,
       held: false,
     })
@@ -86,8 +94,16 @@ export class WheelGesture {
 
   move(id: number, x: number, y: number): Input[] {
     const p = this.pointers.get(id)
-    if (p?.zone !== 'ring' || Math.hypot(x, y) < MIN_ANGLE_RADIUS) return []
+    if (p?.zone !== 'ring') return []
+    if (Math.hypot(x, y) < MIN_ANGLE_RADIUS) {
+      p.angle = Number.NaN
+      return []
+    }
     const angle = Math.atan2(y, x)
+    if (Number.isNaN(p.angle)) {
+      p.angle = angle
+      return []
+    }
     const delta = angleDelta(p.angle, angle)
     p.angle = angle
     if (delta === 0) return []
@@ -95,6 +111,18 @@ export class WheelGesture {
     p.travel += delta
     if (!p.scrolling && Math.abs(p.travel) >= SCROLL_SLOP) p.scrolling = true
     p.ticks += delta
+    // On a real reversal, drop the leftover forward progress so the first tick back
+    // lands one detent from the turning point.
+    const dir = delta > 0 ? 1 : -1
+    if (dir === p.dir) p.back = 0
+    else {
+      p.back += Math.abs(delta)
+      if (p.dir === 0 || p.back >= REVERSAL) {
+        if (p.dir !== 0) p.ticks = dir * p.back
+        p.dir = dir
+        p.back = 0
+      }
+    }
     while (p.ticks >= TICK - EPSILON) {
       p.ticks -= TICK
       out.push({ type: 'tick', dir: 1 })

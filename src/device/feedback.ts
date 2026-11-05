@@ -7,7 +7,7 @@ let audio: AudioContext | undefined
 let clickBuffer: AudioBuffer | undefined
 let noiseBuffer: AudioBuffer | undefined
 
-/** Audio can only start inside a user gesture, so the first press or key creates it. */
+/** Audio can only start inside a user gesture; on touch screens that means finger-up. */
 export function unlockAudio(): void {
   if (!audio) {
     try {
@@ -15,14 +15,18 @@ export function unlockAudio(): void {
     } catch {
       return
     }
-    clickBuffer = render(audio, 0.006, (t) => {
-      const body = Math.sin(2 * Math.PI * 1900 * t) * Math.exp(-t * 900)
-      const snap = (Math.random() * 2 - 1) * Math.exp(-t * 2600)
-      return (body * 0.5 + snap * 0.5) * 0.6
+    // The original clicker is a piezo: a few cycles of a 1250 Hz square wave.
+    clickBuffer = render(audio, 0.0045, (t) => {
+      const square = Math.sin(2 * Math.PI * 1250 * t) >= 0 ? 1 : -1
+      return square * Math.exp(-t * 700) * 0.22
     })
     noiseBuffer = render(audio, 1, () => Math.random() * 2 - 1)
   }
   if (audio.state !== 'running') audio.resume().catch(() => {})
+}
+
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, unlockAudio, { capture: true, passive: true })
 }
 
 function render(ctx: AudioContext, seconds: number, sample: (t: number) => number): AudioBuffer {
@@ -33,40 +37,31 @@ function render(ctx: AudioContext, seconds: number, sample: (t: number) => numbe
   return buffer
 }
 
-/** The wheel's detent click: one per tick and per button press. */
-export function click(): void {
-  if (settings.get().clicker && audio?.state === 'running' && clickBuffer) {
+let lastClick = 0
+let lastBuzz = 0
+
+/** The wheel's click: a tick per detent, a firmer one per button press. */
+export function click(kind: 'tick' | 'press' = 'tick'): void {
+  const now = performance.now()
+  if (settings.get().clicker && audio?.state === 'running' && clickBuffer && now - lastClick > 12) {
+    lastClick = now
     const source = audio.createBufferSource()
     source.buffer = clickBuffer
+    source.playbackRate.value = kind === 'press' ? 0.8 : 1
     source.connect(audio.destination)
     source.start()
   }
-  if (settings.get().haptics) haptic()
-}
-
-let iosSwitch: HTMLLabelElement | undefined
-
-/**
- * Android vibrates. iOS Safari has no vibration API, but toggling a native switch control
- * plays the system haptic, so a hidden one is toggled instead.
- */
-function haptic(): void {
-  if (typeof navigator.vibrate === 'function') {
-    navigator.vibrate(8)
-    return
+  // Android vibrates. iOS has no vibration API: its haptic comes from the native switch
+  // the wheel wraps (see bindControls), which only real taps can toggle.
+  if (
+    settings.get().haptics &&
+    typeof navigator.vibrate === 'function' &&
+    navigator.userActivation?.hasBeenActive !== false &&
+    now - lastBuzz > 30
+  ) {
+    lastBuzz = now
+    navigator.vibrate(kind === 'press' ? 18 : 10)
   }
-  if (!iosSwitch) {
-    iosSwitch = document.createElement('label')
-    iosSwitch.ariaHidden = 'true'
-    iosSwitch.style.cssText = 'position:fixed;left:-100px;width:1px;height:1px;overflow:hidden'
-    const input = document.createElement('input')
-    input.type = 'checkbox'
-    input.setAttribute('switch', '')
-    input.tabIndex = -1
-    iosSwitch.append(input)
-    document.body.append(iosSwitch)
-  }
-  iosSwitch.click()
 }
 
 export type Tone = {

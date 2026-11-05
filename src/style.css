@@ -537,6 +537,15 @@ body {
   transform: translateX(-50%);
 }
 
+/* A native switch inside the wheel: tapping the wheel toggles it, which is how iOS gives haptics. */
+.wheel > .haptic {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .wheel > .center {
   position: absolute;
   inset: 31%;

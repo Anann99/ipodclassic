@@ -142,6 +142,35 @@ nav.push(
 
 bindControls(wheel, (input) => nav.input(input))
 
+// The system back gesture (Android) acts as Menu. While anything is open, one history entry
+// sits above the page. Chrome ignores entries added without a user gesture, so the entry is
+// added on the finger-up or key-up that follows the change.
+let sentinel = false
+let swallow = false
+const settleHistory = () => {
+  const want = nav.depth > 1
+  if (want && !sentinel) {
+    history.pushState({ wheel: true }, '')
+    sentinel = true
+  } else if (!want && sentinel) {
+    sentinel = false
+    swallow = true
+    history.back()
+  }
+}
+window.addEventListener('pointerup', settleHistory)
+window.addEventListener('keyup', settleHistory)
+window.addEventListener('popstate', () => {
+  if (swallow) {
+    swallow = false
+    return
+  }
+  if (!sentinel) return
+  sentinel = false
+  nav.input({ type: 'press', button: 'menu' })
+  nav.input({ type: 'release', button: 'menu' })
+})
+
 // Invite links (?room=CODE) go straight into that room.
 const room = new URLSearchParams(location.search).get('room')?.toUpperCase()
 if (room && room.length === CODE_LENGTH && [...room].every((c) => CODE_LETTERS.includes(c))) {

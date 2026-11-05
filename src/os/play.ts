@@ -43,6 +43,8 @@ class Play implements View {
     this.mode = mode
     this.el.className = 'play'
     this.session = this.start()
+    // Safari grants the wake lock only during the gesture that started the game.
+    stayAwake(true)
     document.addEventListener('visibilitychange', this.onVisibility)
   }
 

@@ -98,6 +98,33 @@ describe('WheelGesture', () => {
     expect(g.move(3, ...at(200))).toEqual([])
   })
 
+  it('ticks back one detent after a reversal, ignoring leftover progress', () => {
+    const g = new WheelGesture()
+    const events: Input[] = [...g.down(1, ...at(0), 0)]
+    for (let d = 2; d <= 25; d += 1) events.push(...g.move(1, ...at(d)))
+    expect(ticks(events)).toBe(1)
+    const back: Input[] = []
+    for (let d = 24; d >= 25 - 14; d -= 1) back.push(...g.move(1, ...at(d)))
+    expect(ticks(back)).toBe(0)
+    for (let d = 10; d >= 9; d -= 1) back.push(...g.move(1, ...at(d)))
+    expect(ticks(back)).toBe(-1)
+  })
+
+  it('ignores small wobbles against the direction of travel', () => {
+    const g = new WheelGesture()
+    g.down(1, ...at(0), 0)
+    const events: Input[] = []
+    for (let d = 1; d <= 40; d += 1) events.push(...g.move(1, ...at(d % 3 === 0 ? d - 2.5 : d)))
+    expect(ticks(events)).toBe(2)
+  })
+
+  it('pauses in the dead zone and resumes without a jump', () => {
+    const g = new WheelGesture()
+    g.down(1, ...at(0), 0)
+    const events = [...g.move(1, 0.05, 0.05), ...g.move(1, ...at(180)), ...g.move(1, ...at(184))]
+    expect(ticks(events)).toBe(0)
+  })
+
   it('never taps on cancel', () => {
     const g = new WheelGesture()
     g.down(1, ...at(0), 0)
