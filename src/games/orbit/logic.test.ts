@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { angleDelta } from '../../device/wheel.ts'
 import {
   CX,
   CY,
@@ -133,6 +134,29 @@ describe('Orbit', () => {
       step(s, idle, DT)
       expect(s.bricks.length).toBeGreaterThan(0)
       for (const r of s.rings) expect(r.outer).toBeLessThan(PADDLE_R - 20)
+    }
+  })
+})
+
+describe('pacing', () => {
+  it('a good player clears every early level in under a minute, with no endless loops', () => {
+    for (const seed of [3, 11]) {
+      const s = create(seed)
+      let t = 0
+      let levelStart = 0
+      while (s.level <= 6 && t < 600) {
+        const b = s.balls[0]
+        const target = b ? Math.atan2(b.y - CY, b.x - CX) + Math.sin(t * 1.7) * 0.2 : s.paddle
+        const turn = Math.max(-0.08, Math.min(0.08, angleDelta(s.paddle, target)))
+        const level = s.level
+        step(s, { turn, launch: true }, DT)
+        t += DT
+        if (s.level !== level) {
+          expect(t - levelStart, `seed ${seed} level ${level}`).toBeLessThan(60)
+          levelStart = t
+        }
+      }
+      expect(s.level).toBeGreaterThan(6)
     }
   })
 })
