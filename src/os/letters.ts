@@ -42,6 +42,7 @@ export class Letters {
       if (letter === DONE) return this.value ? 'done' : undefined
       if (letter === ERASE) this.value = this.value.slice(0, -1)
       else this.value += letter
+      announce(this.value)
       if (this.value.length >= this.length) {
         this.render()
         return 'done'

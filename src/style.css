@@ -30,8 +30,8 @@
   --hi-1: #2f6fe8;
   --hi-2: #1d54c7;
   --hi-ink: #ffffff;
-  --good: #15803d;
-  --gold: #a16207;
+  --good: #13703c;
+  --gold: #9a6b00;
 }
 
 :root[data-finish="graphite"] {
@@ -256,11 +256,11 @@ body {
 }
 
 .rows li.right {
-  background: linear-gradient(#1f9a55, #15803d);
+  background: linear-gradient(#18864a, #13703c);
 }
 
 .rows li.wrong {
-  background: linear-gradient(#d9443d, #b9302a);
+  background: linear-gradient(#cc3a32, #a8261f);
 }
 
 .rows .glyph {
