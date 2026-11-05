@@ -153,3 +153,25 @@ test('Back acts as Menu at every level, and leaves from home', async ({ page }) 
   await expect(page.locator('.title span').last()).toHaveText('Classic')
   expect(page.url()).toContain('localhost')
 })
+
+test('a second tab takes up settings changed in the first, without replacing them', async ({
+  page,
+  context,
+}) => {
+  const other = await context.newPage()
+  await other.goto('/')
+  await press(page, 'ArrowDown', 'ArrowDown', 'Enter', 'ArrowDown', 'ArrowDown', 'Enter')
+  await expect(page.locator('html')).toHaveAttribute('data-finish', 'silver')
+  await expect(other.locator('html')).toHaveAttribute('data-finish', 'silver')
+  const name = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('wheel:settings') ?? '{}').name,
+  )
+  await other.keyboard.press('ArrowDown')
+  await other.keyboard.press('ArrowDown')
+  await other.keyboard.press('Enter')
+  await expect(other.locator('.title span').last()).toHaveText('Settings')
+  const after = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('wheel:settings') ?? '{}'),
+  )
+  expect(after).toMatchObject({ finish: 'silver', name })
+})

@@ -10,14 +10,22 @@ export type Settings = {
 }
 
 const defaults: Settings = { clicker: true, haptics: true, finish: 'auto', name: '' }
-let current: Settings = { ...defaults, ...load<Partial<Settings>>('settings', {}) }
+const read = (): Settings => ({ ...defaults, ...load<Partial<Settings>>('settings', {}) })
+let current = read()
 const listeners = new Set<(s: Settings) => void>()
+
+// Another tab changed settings: take them up here too.
+window.addEventListener('storage', (e) => {
+  if (e.key !== null && e.key !== 'wheel:settings') return
+  current = read()
+  for (const listener of listeners) listener(current)
+})
 
 export const settings = {
   get: (): Readonly<Settings> => current,
   set(patch: Partial<Settings>) {
     // Merge into what is stored now, so another tab's changes are not written over.
-    current = { ...defaults, ...load<Partial<Settings>>('settings', {}), ...patch }
+    current = { ...read(), ...patch }
     save('settings', current)
     for (const listener of listeners) listener(current)
   },
