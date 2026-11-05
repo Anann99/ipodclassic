@@ -85,3 +85,18 @@ it('marks a dropped player offline and restores them on rejoin', async () => {
   expect(restored.peers.find((p) => p.id === 'g')?.online).toBe(true)
   expect(restored.peers).toHaveLength(2)
 })
+
+it('answers pings', async () => {
+  const c = await client()
+  c.send({ t: 'ping' })
+  expect(await c.next('pong')).toEqual({ t: 'pong' })
+})
+
+it('refuses sockets opened by pages from another site', async () => {
+  const ws = new WebSocket(url, { origin: 'https://evil.example' })
+  const outcome = await new Promise((done) => {
+    ws.once('open', () => done('open'))
+    ws.once('error', () => done('refused'))
+  })
+  expect(outcome).toBe('refused')
+})

@@ -9,7 +9,15 @@ export type RoomEvents = {
   room?(code: string, host: string, peers: Peer[]): void
   peers?(peers: Peer[]): void
   message?(from: string, data: unknown): void
-  error?(reason: 'no-room' | 'full' | 'offline'): void
+  /** The connection dropped (true) or came back (false). It keeps retrying meanwhile. */
+  offline?(offline: boolean): void
+  error?(reason: 'no-room' | 'full'): void
+}
+
+/** Random hex. crypto.randomUUID is missing on plain-http LAN addresses; this is not. */
+function randomId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(12))
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /** A stable id per tab, so two tabs on one computer are two players. */
@@ -17,16 +25,19 @@ export function playerId(): string {
   try {
     let id = sessionStorage.getItem('wheel:id')
     if (!id) {
-      id = crypto.randomUUID()
+      id = randomId()
       sessionStorage.setItem('wheel:id', id)
     }
     return id
   } catch {
-    return crypto.randomUUID()
+    return randomId()
   }
 }
 
-const RETRY_MS = [500, 1000, 2000, 4000]
+const RETRY_MS = [250, 500, 1000, 2000, 4000]
+const PING_MS = 4000
+/** No reply for this long means the socket died quietly (common after a phone sleeps). */
+const SILENT_MS = 9000
 
 export class Room {
   readonly id = playerId()
@@ -34,22 +45,36 @@ export class Room {
   private socket: WebSocket | undefined
   private closed = false
   private attempts = 0
+  private heard = 0
+  private retry: number | undefined
   private queue: ClientMessage[] = []
   private readonly events: RoomEvents
   private readonly name: string
+  private readonly ping: number
+  private readonly wake = () => {
+    if (document.visibilityState === 'visible' && !this.closed && !this.isOpen) this.reconnect(0)
+  }
 
   constructor(name: string, events: RoomEvents) {
     this.name = name
     this.events = events
+    this.ping = window.setInterval(() => {
+      if (!this.isOpen) return
+      if (performance.now() - this.heard > SILENT_MS) this.socket?.close()
+      else this.write({ t: 'ping' })
+    }, PING_MS)
+    document.addEventListener('visibilitychange', this.wake)
+    window.addEventListener('online', this.wake)
+    window.addEventListener('pageshow', this.wake)
   }
 
   host(): void {
-    this.open({ t: 'host', id: this.id, name: this.name })
+    this.open()
   }
 
   join(code: string): void {
     this.code = code.toUpperCase()
-    this.open({ t: 'join', code: this.code, id: this.id, name: this.name })
+    this.open()
   }
 
   send(data: unknown, to?: string): void {
@@ -58,24 +83,43 @@ export class Room {
 
   close(): void {
     this.closed = true
+    clearInterval(this.ping)
+    clearTimeout(this.retry)
+    document.removeEventListener('visibilitychange', this.wake)
+    window.removeEventListener('online', this.wake)
+    window.removeEventListener('pageshow', this.wake)
     this.socket?.close()
   }
 
-  private write(message: ClientMessage) {
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message))
-    else this.queue.push(message)
+  private get isOpen() {
+    return this.socket?.readyState === WebSocket.OPEN
   }
 
-  private open(first: ClientMessage) {
+  private write(message: ClientMessage) {
+    if (this.isOpen) this.socket?.send(JSON.stringify(message))
+    else if (message.t === 'send') this.queue.push(message)
+  }
+
+  /** Hosts once; after that, every connection rejoins the same room under the same id. */
+  private hello(): ClientMessage {
+    return this.code
+      ? { t: 'join', code: this.code, id: this.id, name: this.name }
+      : { t: 'host', id: this.id, name: this.name }
+  }
+
+  private open() {
     const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
     const socket = new WebSocket(url)
     this.socket = socket
     socket.onopen = () => {
+      if (this.attempts > 0) this.events.offline?.(false)
       this.attempts = 0
-      socket.send(JSON.stringify(first))
+      this.heard = performance.now()
+      socket.send(JSON.stringify(this.hello()))
       for (const m of this.queue.splice(0)) socket.send(JSON.stringify(m))
     }
     socket.onmessage = (e) => {
+      this.heard = performance.now()
       let m: ServerMessage
       try {
         m = JSON.parse(String(e.data))
@@ -88,29 +132,23 @@ export class Room {
       } else if (m.t === 'peers') this.events.peers?.(m.peers)
       else if (m.t === 'msg') this.events.message?.(m.from, m.data)
       else if (m.t === 'error' && m.reason !== 'bad-message') {
-        this.closed = true
-        socket.close()
+        this.close()
         this.events.error?.(m.reason)
       }
     }
     socket.onclose = () => {
       if (this.closed || socket !== this.socket) return
-      const wait = RETRY_MS[this.attempts]
-      if (wait === undefined) {
-        this.closed = true
-        this.events.error?.('offline')
-        return
-      }
-      this.attempts += 1
-      // Rejoin the same room; a host that never got a room simply hosts again.
-      setTimeout(() => {
-        if (this.closed) return
-        this.open(
-          this.code
-            ? { t: 'join', code: this.code, id: this.id, name: this.name }
-            : { t: 'host', id: this.id, name: this.name },
-        )
-      }, wait)
+      if (this.attempts === 2) this.events.offline?.(true)
+      this.reconnect(RETRY_MS[Math.min(this.attempts, RETRY_MS.length - 1)] as number)
     }
+  }
+
+  /** Keeps trying for as long as the room is open: phones lose Wi-Fi and come back. */
+  private reconnect(wait: number) {
+    clearTimeout(this.retry)
+    this.attempts += 1
+    this.retry = window.setTimeout(() => {
+      if (!this.closed && !this.isOpen) this.open()
+    }, wait)
   }
 }

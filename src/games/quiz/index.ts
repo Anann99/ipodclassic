@@ -211,16 +211,20 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
           sync()
         }
       },
+      offline: (offline) => {
+        note = offline ? { text: 'Offline', busy: true } : undefined
+        draw()
+      },
       error: (reason) => {
         room = undefined
-        if (reason === 'no-room' && role === 'join') {
+        if (reason === 'no-room' && role === 'join' && !wire) {
           note = undefined
           spelling = new Letters(CODE_LETTERS, CODE_LENGTH)
           draw()
           spelling.reject()
           return
         }
-        note = { text: reason === 'full' ? 'Room full' : 'Offline' }
+        note = { text: reason === 'full' ? 'Room full' : 'Room closed' }
         draw()
       },
     })

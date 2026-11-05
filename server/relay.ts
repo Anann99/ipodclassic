@@ -19,7 +19,8 @@ export type { ClientMessage, Peer, ServerMessage }
 export const PATH = '/ws'
 const MAX_MESSAGE_BYTES = 16 * 1024
 /** Rooms with nobody connected are kept this long so a host whose phone slept can return. */
-const EMPTY_ROOM_MS = 60_000
+const EMPTY_ROOM_MS = 5 * 60_000
+const HEARTBEAT_MS = 5_000
 
 type Member = { peer: Peer; socket: WebSocket | null }
 type Room = { code: string; host: string; members: Map<string, Member>; expires?: NodeJS.Timeout }
@@ -57,9 +58,24 @@ export function createRelay() {
     broadcastPeers(room, socket)
   }
 
+  // Drop sockets that stopped answering pings (phones that slept without closing).
+  const alive = new WeakSet<WebSocket>()
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      if (!alive.has(client)) {
+        client.terminate()
+        continue
+      }
+      alive.delete(client)
+      client.ping()
+    }
+  }, HEARTBEAT_MS)
+
   wss.on('connection', (socket) => {
     let room: Room | undefined
     let self: string | undefined
+    alive.add(socket)
+    socket.on('pong', () => alive.add(socket))
 
     socket.on('message', (raw) => {
       let message: ClientMessage
@@ -68,6 +84,7 @@ export function createRelay() {
       } catch {
         return send(socket, { t: 'error', reason: 'bad-message' })
       }
+      if (message.t === 'ping') return send(socket, { t: 'pong' })
       if (message.t === 'host' && !room && typeof message.id === 'string') {
         room = { code: newCode(), host: message.id, members: new Map() }
         rooms.set(room.code, room)
@@ -109,10 +126,14 @@ export function createRelay() {
     attach(server: EventEmitter) {
       server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
         if (new URL(req.url ?? '/', 'http://x').pathname !== PATH) return
+        // Only pages served by this host may connect (no cross-site socket hijacking).
+        const origin = req.headers.origin
+        if (origin && new URL(origin).host !== req.headers.host) return void socket.destroy()
         wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
       })
     },
     close() {
+      clearInterval(heartbeat)
       for (const r of rooms.values()) clearTimeout(r.expires)
       for (const client of wss.clients) client.terminate()
       wss.close()

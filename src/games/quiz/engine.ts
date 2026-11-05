@@ -78,11 +78,14 @@ export class QuizEngine {
   join(id: string, name: string): void {
     const existing = this.players.get(id)
     if (existing) {
-      existing.name = name
       existing.online = true
-    } else {
-      this.players.set(id, { id, name, score: 0, right: 0, online: true })
+      return
     }
+    // Two players called the same thing are told apart: Echo, Echo 2.
+    const taken = new Set([...this.players.values()].map((p) => p.name))
+    let unique = name
+    for (let n = 2; taken.has(unique); n++) unique = `${name} ${n}`
+    this.players.set(id, { id, name: unique, score: 0, right: 0, online: true })
   }
 
   setOnline(id: string, online: boolean): void {

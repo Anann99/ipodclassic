@@ -11,8 +11,10 @@ export type ClientMessage =
   | { t: 'host'; id: string; name: string }
   | { t: 'join'; code: string; id: string; name: string }
   | { t: 'send'; to?: string; data: unknown }
+  | { t: 'ping' }
 
 export type ServerMessage =
+  | { t: 'pong' }
   | { t: 'room'; code: string; host: string; peers: Peer[] }
   | { t: 'peers'; peers: Peer[] }
   | { t: 'msg'; from: string; data: unknown }

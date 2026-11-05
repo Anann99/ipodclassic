@@ -39,6 +39,16 @@ const NAMES = [
   'Pebble',
   'Rocket',
   'Maple',
+  'Opal',
+  'Tango',
+  'Luna',
+  'Ziggy',
+  'Biscuit',
+  'Clover',
+  'Disco',
+  'Fable',
+  'Gizmo',
+  'Hazel',
 ]
 
 /** The name other players see. A friendly one is picked the first time. */
