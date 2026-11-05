@@ -185,6 +185,17 @@ describe('power-ups', () => {
     expect(run(s, 1)).toContainEqual({ type: 'power', power: 'life' })
     expect(s.lives).toBe(3)
   })
+
+  it('carries a capsule from the innermost ring into the next level', () => {
+    const s = create(4)
+    s.phase = 'clear'
+    s.clock = 0
+    s.lives = 2
+    s.capsules = [{ power: 'life', r: 23, angle: s.paddle }]
+    expect(run(s, 2.5)).toContainEqual({ type: 'power', power: 'life' })
+    expect(s.level).toBe(2)
+    expect(s.lives).toBe(3)
+  })
 })
 
 describe('physics', () => {

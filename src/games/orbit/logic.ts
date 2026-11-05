@@ -165,7 +165,6 @@ export function step(s: State, controls: Controls, dt: number): Event[] {
       s.level += 1
       s.phase = 'serve'
       s.clock = 0
-      s.capsules = []
       build(s)
     }
     return events
@@ -177,6 +176,8 @@ export function step(s: State, controls: Controls, dt: number): Event[] {
   s.width += (target - s.width) * Math.min(1, dt * 8)
 
   if (s.phase === 'serve') {
+    // Power-ups from the last level keep falling into this one.
+    moveCapsules(s, dt, events)
     if (controls.launch || s.clock >= SERVE_AUTO) launch(s, events)
     return events
   }
