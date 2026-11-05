@@ -3,7 +3,7 @@
 import { click } from '../device/feedback.ts'
 import type { Input } from '../device/wheel.ts'
 import { canvas2d, loop } from './canvas.ts'
-import type { View } from './nav.ts'
+import { announce, type View } from './nav.ts'
 
 /** Draws a preview into the right half of a split menu, in logical pixels. */
 export type Art = (
@@ -112,6 +112,7 @@ export class Menu implements View {
         this.index = next
         click()
         this.update()
+        announce(this.items[next]?.label ?? '')
       }
       return true
     }

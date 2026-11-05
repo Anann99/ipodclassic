@@ -17,8 +17,8 @@
   --wheel-1: #ffffff;
   --wheel-2: #eeeef1;
   --wheel-shade: rgb(0 0 0 / 0.07);
-  --key: #a5a6ad;
-  --key-on: #6e6f76;
+  --key: #76777e;
+  --key-on: #4d4e54;
   --center-1: #f3f3f5;
   --center-2: #dcdde1;
   --lcd: #ffffff;
@@ -27,8 +27,8 @@
   --bar-1: #fdfdfd;
   --bar-2: #e3e4e8;
   --line: #c7c8cd;
-  --hi-1: #62a6f8;
-  --hi-2: #2a6fdf;
+  --hi-1: #2f6fe8;
+  --hi-2: #1d54c7;
   --hi-ink: #ffffff;
 }
 
@@ -42,8 +42,8 @@
   --wheel-1: #1d1e21;
   --wheel-2: #121315;
   --wheel-shade: rgb(0 0 0 / 0.35);
-  --key: #6f7076;
-  --key-on: #a9aab0;
+  --key: #8a8b91;
+  --key-on: #c4c5ca;
   --center-1: #2b2c30;
   --center-2: #1c1d20;
   --lcd: #101113;
@@ -52,13 +52,23 @@
   --bar-1: #2a2b2f;
   --bar-2: #1c1d20;
   --line: #34353a;
-  --hi-1: #4e95ef;
-  --hi-2: #225fca;
+  --hi-1: #2f6fe8;
+  --hi-2: #1d54c7;
   --hi-ink: #ffffff;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Read aloud by screen readers, never shown. */
+.sr {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 html,
@@ -83,7 +93,7 @@ body {
 /* The device. Proportions follow a 61.8 x 103.5 mm body. */
 
 .device {
-  --w: min(calc(100vw - 32px), calc((100dvh - 48px) * 0.597), 380px);
+  --w: min(calc(100vw - 32px), calc(86dvh * 0.597), 440px);
   width: var(--w);
   height: calc(var(--w) / 0.597);
   display: grid;

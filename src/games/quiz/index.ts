@@ -366,8 +366,8 @@ const art: Art = (g, t, w, h) => {
     const on = i === pick
     g.globalAlpha = on ? 1 : 0.18
     const grad = g.createLinearGradient(0, y, 0, y + rowH)
-    grad.addColorStop(0, on ? '#62a6f8' : '#6b6f7a')
-    grad.addColorStop(1, on ? '#2a6fdf' : '#6b6f7a')
+    grad.addColorStop(0, on ? '#2f6fe8' : '#6b6f7a')
+    grad.addColorStop(1, on ? '#1d54c7' : '#6b6f7a')
     g.fillStyle = grad
     g.beginPath()
     g.roundRect(18, y, w - 36, rowH, 5)
