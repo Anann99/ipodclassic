@@ -1,4 +1,5 @@
 import { tone } from '../../device/feedback.ts'
+import { angleDelta } from '../../device/wheel.ts'
 import { canvas2d, loop } from '../../os/canvas.ts'
 import type { Art, Game, GameContext, Input, Session } from '../types.ts'
 import {
@@ -48,7 +49,11 @@ function start(ctx: GameContext): Session {
   let best = ctx.load('best', 0)
   let turn = 0
   let launch = false
-  let shake = 0
+  /** Screen shake builds as trauma and fades; it is off for reduced motion. */
+  let trauma = 0
+  let newBest = false
+  let before: { paddle: number; balls: { x: number; y: number }[] } = { paddle: 0, balls: [] }
+  const calm = matchMedia('(prefers-reduced-motion: reduce)')
   let time = 0
   const particles: Particle[] = []
   const trail: { x: number; y: number }[] = []
@@ -75,8 +80,9 @@ function start(ctx: GameContext): Session {
         tone({ from: pitch, to: pitch * 1.5, ms: 60, gain: 0.07 })
       }
     }
-    if (e.type === 'lost' || e.type === 'over') shake = 0.35
+    if (e.type === 'lost' || e.type === 'over') trauma = Math.min(1, trauma + 0.6)
     if (e.type === 'over' && state.score > best) {
+      newBest = true
       best = state.score
       ctx.save('best', best)
     }
@@ -85,7 +91,13 @@ function start(ctx: GameContext): Session {
   const game = loop(
     (dt) => {
       time += dt
-      if (state.phase === 'over' && launch && state.clock > 0.8) state = create(state.seed)
+      if (state.phase === 'over' && launch && state.clock > 0.8) {
+        state = create(state.seed)
+        newBest = false
+        particles.length = 0
+        trail.length = 0
+      }
+      before = { paddle: state.paddle, balls: state.balls.map((b) => ({ x: b.x, y: b.y })) }
       const events = step(state, { turn, launch }, dt)
       turn = 0
       launch = false
@@ -100,13 +112,24 @@ function start(ctx: GameContext): Session {
       for (let i = particles.length - 1; i >= 0; i--) {
         if ((particles[i] as Particle).life <= 0) particles.splice(i, 1)
       }
-      shake = Math.max(0, shake - dt)
+      trauma = Math.max(0, trauma - dt * 1.5)
     },
-    () => {
-      const ball = state.balls[0]
+    (alpha) => {
+      // Draw between the last two physics steps, so motion is smooth at any refresh rate.
+      const shown: State = {
+        ...state,
+        paddle: before.paddle + angleDelta(before.paddle, state.paddle) * alpha,
+        balls: state.balls.map((b, i) => {
+          const from = before.balls[i]
+          if (!from || before.balls.length !== state.balls.length) return b
+          return { ...b, x: from.x + (b.x - from.x) * alpha, y: from.y + (b.y - from.y) * alpha }
+        }),
+      }
+      const ball = shown.balls[0]
       if (ball) trail.push({ x: ball.x, y: ball.y })
       if (trail.length > 8 || !ball) trail.shift()
-      draw(g, state, particles, trail, time, shake, best)
+      const shake = calm.matches ? 0 : 4 * trauma * trauma
+      draw(g, shown, particles, trail, time, shake, best, newBest)
     },
   )
   game.start()
@@ -146,6 +169,7 @@ function draw(
   time: number,
   shake: number,
   best: number,
+  newBest: boolean,
 ) {
   const bg = g.createRadialGradient(CX, CY, 10, CX, CY, 200)
   bg.addColorStop(0, BACKDROP[0])
@@ -154,7 +178,12 @@ function draw(
   g.fillRect(0, 0, 320, 240)
 
   g.save()
-  if (shake > 0) g.translate((Math.random() - 0.5) * shake * 14, (Math.random() - 0.5) * shake * 14)
+  if (shake > 0) {
+    g.translate(
+      Math.round((Math.random() * 2 - 1) * shake),
+      Math.round((Math.random() * 2 - 1) * shake),
+    )
+  }
 
   // Track
   g.strokeStyle = 'rgba(255,255,255,0.07)'
@@ -302,8 +331,8 @@ function draw(
     g.font = '700 40px system-ui, -apple-system, sans-serif'
     g.fillText(String(s.score), CX, CY - 8)
     g.font = '600 13px system-ui, -apple-system, sans-serif'
-    g.fillStyle = s.score >= best && s.score > 0 ? '#ffd166' : 'rgba(255,255,255,0.55)'
-    g.fillText(`★ ${Math.max(best, s.score)}`, CX, CY + 26)
+    g.fillStyle = newBest ? '#ffd166' : 'rgba(255,255,255,0.55)'
+    g.fillText(`★ ${best}`, CX, CY + 26)
     g.globalAlpha = 1
   }
 }

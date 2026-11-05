@@ -206,7 +206,7 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
         const m = data as Message
         if ('s' in m && from === host) receive(m.s)
         if ('answer' in m && engine) {
-          engine.answer(from, m.answer.n, m.answer.choice, m.answer.elapsed)
+          engine.answer(from, m.answer.n, m.answer.choice, m.answer.elapsed, now())
           engine.update(now())
           sync()
         }
@@ -269,7 +269,7 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
     picked = selected
     const elapsed = now() - askedAt
     if (engine) {
-      engine.answer(me, wire.n, picked, elapsed)
+      engine.answer(me, wire.n, picked, elapsed, now())
       engine.update(now())
       sync()
     } else {

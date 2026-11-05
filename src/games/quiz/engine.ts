@@ -43,10 +43,19 @@ export type Snapshot =
     }
   | { phase: 'final'; players: Player[] }
 
-/** Points for a correct answer: full marks when instant, half when at the buzzer. */
-export function points(elapsedMs: number): number {
-  const t = Math.max(0, Math.min(ANSWER_MS, elapsedMs))
-  return Math.round(MAX_POINTS * (1 - t / ANSWER_MS / 2))
+/** The most network delay the referee believes; claimed answer times are bounded by it. */
+export const LAG_MS = 400
+
+/** Time to read a question before points start to drop, so slow readers are not penalized. */
+export function readingMs(text: string): number {
+  const words = text.split(/\s+/).filter(Boolean).length
+  return Math.max(1500, Math.min(4000, 500 + words * 250))
+}
+
+/** Points for a correct answer: full marks while reading, half at the buzzer. */
+export function points(elapsedMs: number, readMs = 0): number {
+  const t = Math.max(0, Math.min(ANSWER_MS, elapsedMs) - readMs)
+  return Math.round(MAX_POINTS * (1 - t / (ANSWER_MS - readMs) / 2))
 }
 
 export class QuizEngine {
@@ -131,8 +140,11 @@ export class QuizEngine {
     this.order = order
   }
 
-  /** Records a player's pick (a position in the shown order). Returns false if too late. */
-  answer(id: string, n: number, choice: number, elapsedMs: number): boolean {
+  /**
+   * Records a player's pick (a position in the shown order). `elapsedMs` is the player's own
+   * measure; it is trusted only within LAG_MS of when the referee received it.
+   */
+  answer(id: string, n: number, choice: number, elapsedMs: number, now: number): boolean {
     if (
       this.phase !== 'question' ||
       n !== this.n ||
@@ -141,7 +153,9 @@ export class QuizEngine {
     ) {
       return false
     }
-    this.answers.set(id, { choice, elapsed: Math.max(0, elapsedMs) })
+    const seen = now - this.started
+    const elapsed = Math.max(0, seen - LAG_MS, Math.min(seen, elapsedMs))
+    this.answers.set(id, { choice, elapsed })
     return true
   }
 
@@ -176,7 +190,8 @@ export class QuizEngine {
     for (const [id, { choice, elapsed }] of this.answers) {
       const player = this.players.get(id)
       if (!player) continue
-      const gain = choice === correct ? points(elapsed) : 0
+      const read = readingMs(this.bank[this.picks[this.n] ?? 0]?.q ?? '')
+      const gain = choice === correct ? points(elapsed, read) : 0
       this.gained[id] = gain
       player.score += gain
       if (gain) player.right += 1

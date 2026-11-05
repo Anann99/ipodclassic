@@ -16,8 +16,11 @@ const RING_R0 = 18
 const RING_H = 10
 const RING_GAP = 2.5
 const SEG_GAP = 0.06
-/** Largest deflection from the inward normal when the ball hits a paddle edge. */
-const MAX_DEFLECT = 1.05
+/** Paddle edges can aim at most this far off center (sine of 60 degrees). */
+const MAX_AIM = Math.sin(Math.PI / 3)
+/** The ball's path may miss the brick field by at most this much, so most hits reach a brick. */
+const AIM_MARGIN = 14
+const MAX_BALLS = 3
 const SERVE_AUTO = 2.5
 const CLEAR_TIME = 1.4
 const WIDE_TIME = 15
@@ -48,6 +51,8 @@ export type State = {
   speed: number
   rings: Ring[]
   bricks: Brick[]
+  /** Bricks the level started with; the last few speed the rings up. */
+  total: number
   balls: Ball[]
   capsules: Capsule[]
 }
@@ -84,6 +89,7 @@ export function create(seed = 1): State {
     speed: 0,
     rings: [],
     bricks: [],
+    total: 0,
     balls: [],
     capsules: [],
   }
@@ -125,7 +131,11 @@ function build(s: State, pattern = (s.level - 1) % 5) {
     }
   }
   if (s.bricks.length === 0) build(s, 0)
+  s.total = s.bricks.length
 }
+
+/** The last fifth of a level spins faster, so the final bricks come to you. */
+const boost = (s: State) => (s.bricks.length < s.total * 0.2 ? 1.8 : 1)
 
 /** Where a served ball rests: on the paddle, just inside it. */
 export function restingBall(s: State): Ball {
@@ -159,7 +169,7 @@ export function step(s: State, controls: Controls, dt: number): Event[] {
     return events
   }
 
-  for (const ring of s.rings) ring.angle += ring.spin * dt
+  for (const ring of s.rings) ring.angle += ring.spin * boost(s) * dt
   if (s.wideLeft > 0) s.wideLeft = Math.max(0, s.wideLeft - dt)
   const target = s.wideLeft > 0 ? WIDE_W : PADDLE_W
   s.width += (target - s.width) * Math.min(1, dt * 8)
@@ -191,12 +201,23 @@ export function step(s: State, controls: Controls, dt: number): Event[] {
 }
 
 function moveBall(s: State, ball: Ball, dt: number, events: Event[]) {
+  // Substeps keep the ball moving under half its radius relative to any brick per step.
+  const fastest = Math.max(0, ...s.rings.map((r) => Math.abs(r.spin) * r.outer)) * 1.8
+  const steps = Math.ceil(((Math.hypot(ball.vx, ball.vy) + fastest) * dt) / (BALL_R / 2))
+  for (let i = 0; i < steps; i++) {
+    if (substep(s, ball, dt / steps, events)) return
+  }
+}
+
+/** Moves the ball once and resolves at most one contact. Returns true after a paddle hit. */
+function substep(s: State, ball: Ball, dt: number, events: Event[]): boolean {
   ball.x += ball.vx * dt
   ball.y += ball.vy * dt
   const dx = ball.x - CX
   const dy = ball.y - CY
   const r = Math.hypot(dx, dy)
   const angle = Math.atan2(dy, dx)
+  const speed = Math.hypot(ball.vx, ball.vy)
 
   // Paddle: only while moving outward, so the ball never sticks inside it.
   const outward = ball.vx * dx + ball.vy * dy > 0
@@ -206,22 +227,30 @@ function moveBall(s: State, ball: Ball, dt: number, events: Event[]) {
     r - BALL_R <= PADDLE_R + PADDLE_T / 2 &&
     Math.abs(angleDelta(s.paddle, angle)) <= s.width / 2 + BALL_R / PADDLE_R
   ) {
+    // Aim by where the ball lands on the paddle: the center sends it straight through the
+    // middle, the edges send it across, but always through the brick field.
     const offset = Math.max(-1, Math.min(1, angleDelta(s.paddle, angle) / (s.width / 2)))
+    const field = Math.max(RING_R0, ...s.bricks.map((b) => (s.rings[b.ring] as Ring).outer))
+    const reach = Math.min(MAX_AIM, (field + BALL_R + AIM_MARGIN) / PADDLE_R)
     s.idle = s.combo === 0 ? s.idle + 1 : 0
     const jitter = (random(s) - 0.5) * (0.08 + Math.min(0.6, s.idle * 0.15))
-    const out = angle + Math.PI - offset * MAX_DEFLECT + jitter
-    const speed = Math.min(s.speed * 1.25, Math.hypot(ball.vx, ball.vy) * 1.015)
-    ball.vx = Math.cos(out) * speed
-    ball.vy = Math.sin(out) * speed
+    const out = angle + Math.PI - Math.asin(offset * reach) + jitter
+    const next = Math.min(s.speed * 1.25, speed * 1.015)
+    ball.vx = Math.cos(out) * next
+    ball.vy = Math.sin(out) * next
     const rest = PADDLE_R - PADDLE_T / 2 - BALL_R
     ball.x = CX + Math.cos(angle) * rest
     ball.y = CY + Math.sin(angle) * rest
     s.combo = 0
     events.push({ type: 'paddle' })
-    return
+    return true
   }
 
-  // Bricks: at most one bounce per step.
+  // Bricks: resolve the deepest overlap.
+  let index = -1
+  let depth = 0
+  let nx = 0
+  let ny = 0
   for (let i = 0; i < s.bricks.length; i++) {
     const brick = s.bricks[i] as Brick
     const ring = s.rings[brick.ring] as Ring
@@ -233,40 +262,56 @@ function moveBall(s: State, ball: Ball, dt: number, events: Event[]) {
       brick.from + ring.angle,
       brick.to + ring.angle,
     )
-    const nx = dx - hit.x
-    const ny = dy - hit.y
-    const d = Math.hypot(nx, ny)
-    if (d >= BALL_R) continue
-    // Normal from the brick to the ball; inside the brick, push out radially.
-    let ux = d > 1e-6 ? nx / d : dx / (r || 1)
-    let uy = d > 1e-6 ? ny / d : dy / (r || 1)
-    if (d <= 1e-6 && r < (ring.inner + ring.outer) / 2) {
-      ux = -ux
-      uy = -uy
-    }
-    const along = ball.vx * ux + ball.vy * uy
-    if (along < 0) {
-      ball.vx -= 2 * along * ux
-      ball.vy -= 2 * along * uy
-    }
-    ball.x += ux * (BALL_R - d)
-    ball.y += uy * (BALL_R - d)
-    brick.hp -= 1
-    const mid = (ring.inner + ring.outer) / 2
-    const at = (brick.from + brick.to) / 2 + ring.angle
-    const x = CX + Math.cos(at) * mid
-    const y = CY + Math.sin(at) * mid
-    if (brick.hp > 0) {
-      events.push({ type: 'hit', x, y, ring: brick.ring })
+    const d = Math.hypot(dx - hit.x, dy - hit.y)
+    if (d >= BALL_R || BALL_R - d <= depth) continue
+    index = i
+    depth = BALL_R - d
+    if (d > 1e-6) {
+      nx = (dx - hit.x) / d
+      ny = (dy - hit.y) / d
     } else {
-      s.bricks.splice(i, 1)
-      s.combo += 1
-      s.score += 10 * Math.min(8, s.combo)
-      events.push({ type: 'break', x, y, ring: brick.ring })
-      if (brick.power) s.capsules.push({ power: brick.power, r: mid, angle: at })
+      // The center is inside the brick: leave through the nearer curved face.
+      const out = r > (ring.inner + ring.outer) / 2 ? 1 : -1
+      nx = (out * dx) / (r || 1)
+      ny = (out * dy) / (r || 1)
     }
-    return
   }
+  if (index < 0) return false
+  const brick = s.bricks[index] as Brick
+  const ring = s.rings[brick.ring] as Ring
+  ball.x += nx * depth
+  ball.y += ny * depth
+
+  // Bounce off the brick's moving surface. Contacts that are already separating (a spinning
+  // edge brushing a ball that is leaving) push the ball out but do not count as hits.
+  const spin = ring.spin * boost(s)
+  const ux = -spin * dy
+  const uy = spin * dx
+  const approach = (ball.vx - ux) * nx + (ball.vy - uy) * ny
+  if (approach >= 0) return false
+  const rvx = ball.vx - ux - 2 * approach * nx
+  const rvy = ball.vy - uy - 2 * approach * ny
+  const vx = rvx + ux
+  const vy = rvy + uy
+  const scale = speed / (Math.hypot(vx, vy) || 1)
+  ball.vx = vx * scale
+  ball.vy = vy * scale
+
+  brick.hp -= 1
+  const mid = (ring.inner + ring.outer) / 2
+  const at = (brick.from + brick.to) / 2 + ring.angle
+  const x = CX + Math.cos(at) * mid
+  const y = CY + Math.sin(at) * mid
+  if (brick.hp > 0) {
+    events.push({ type: 'hit', x, y, ring: brick.ring })
+  } else {
+    s.bricks.splice(index, 1)
+    s.combo += 1
+    s.score += 10 * Math.min(8, s.combo)
+    events.push({ type: 'break', x, y, ring: brick.ring })
+    if (brick.power) s.capsules.push({ power: brick.power, r: mid, angle: at })
+  }
+  return false
 }
 
 function moveCapsules(s: State, dt: number, events: Event[]) {
@@ -291,6 +336,7 @@ function apply(s: State, power: Power) {
     const ball = s.balls[0]
     if (!ball) return
     for (const turn of [-0.4, 0.4]) {
+      if (s.balls.length >= MAX_BALLS) break
       const c = Math.cos(turn)
       const n = Math.sin(turn)
       s.balls.push({ ...ball, vx: ball.vx * c - ball.vy * n, vy: ball.vx * n + ball.vy * c })

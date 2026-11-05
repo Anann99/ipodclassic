@@ -160,3 +160,68 @@ describe('pacing', () => {
     }
   })
 })
+
+describe('physics', () => {
+  it('counts one hit when a spinning brick edge brushes a ball that is leaving', () => {
+    const s = create(5)
+    const ring = s.rings[0]
+    const brick = s.bricks.find((b) => b.ring === 0)
+    if (!ring || !brick) throw new Error('no ring')
+    s.bricks = [{ ...brick, hp: 99 }]
+    ring.spin = 3
+    // Just past the brick's leading edge, drifting away tangentially at the same speed.
+    const edge = brick.to + ring.angle + 0.02
+    const mid = (ring.inner + ring.outer) / 2
+    s.phase = 'play'
+    s.balls = [
+      {
+        x: CX + Math.cos(edge) * mid,
+        y: CY + Math.sin(edge) * mid,
+        vx: -Math.sin(edge) * mid * 2.4,
+        vy: Math.cos(edge) * mid * 2.4,
+      },
+    ]
+    const hits = run(s, 0.25).filter((e) => e.type === 'hit').length
+    expect(hits).toBeLessThanOrEqual(1)
+  })
+
+  it('keeps the ball finite, out of bricks and under the speed cap', () => {
+    for (const seed of [2, 9]) {
+      const s = create(seed)
+      for (let i = 0; i < 120 * 90; i++) {
+        const b = s.balls[0]
+        const target = b ? Math.atan2(b.y - CY, b.x - CX) : s.paddle
+        step(
+          s,
+          { turn: Math.max(-0.08, Math.min(0.08, angleDelta(s.paddle, target))), launch: true },
+          DT,
+        )
+        for (const ball of s.balls) {
+          expect(Number.isFinite(ball.x + ball.y + ball.vx + ball.vy)).toBe(true)
+          expect(Math.hypot(ball.vx, ball.vy)).toBeLessThanOrEqual(s.speed * 1.26)
+          for (const brick of s.bricks) {
+            const ring = s.rings[brick.ring]
+            if (!ring) continue
+            const p = closestOnSector(
+              ball.x - CX,
+              ball.y - CY,
+              ring.inner,
+              ring.outer,
+              brick.from + ring.angle,
+              brick.to + ring.angle,
+            )
+            expect(Math.hypot(ball.x - CX - p.x, ball.y - CY - p.y)).toBeGreaterThan(0)
+          }
+        }
+      }
+    }
+  })
+})
+
+it('game logic uses no clock or global randomness, so replays are exact', async () => {
+  const { readFile } = await import('node:fs/promises')
+  for (const file of ['logic.ts', '../quiz/engine.ts']) {
+    const source = await readFile(new URL(file, import.meta.url), 'utf8')
+    expect(source, file).not.toMatch(/Math\.random|Date\.now|performance\.now|new Date/)
+  }
+})

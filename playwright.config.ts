@@ -12,7 +12,10 @@ export default defineConfig({
     reuseExistingServer: true,
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'] }, testIgnore: /touch/ },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'] }, testMatch: /app/ },
     { name: 'phone', use: { ...devices['Pixel 7'] }, testMatch: /touch/ },
+    // `npm run shots`: every screen, for looking at changes.
+    { name: 'shots-phone', use: { ...devices['Pixel 7'] }, testMatch: /screens/ },
+    { name: 'shots-desktop', use: { ...devices['Desktop Chrome'] }, testMatch: /screens/ },
   ],
 })

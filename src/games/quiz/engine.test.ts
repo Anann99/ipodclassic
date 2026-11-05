@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { ANSWER_MS, GRACE_MS, points, type Question, QuizEngine, REVEAL_MS } from './engine.ts'
+import {
+  ANSWER_MS,
+  GRACE_MS,
+  LAG_MS,
+  points,
+  type Question,
+  QuizEngine,
+  REVEAL_MS,
+  readingMs,
+} from './engine.ts'
 
 const bank: Question[] = Array.from({ length: 30 }, (_, i) => ({
   q: `Question ${i}`,
@@ -27,12 +36,20 @@ describe('points', () => {
     expect(points(ANSWER_MS)).toBe(500)
     expect(points(ANSWER_MS * 3)).toBe(500)
   })
+
+  it('gives full marks while the question is being read', () => {
+    expect(points(2000, 3000)).toBe(1000)
+    expect(points(3000, 3000)).toBe(1000)
+    expect(points(ANSWER_MS, 3000)).toBe(500)
+    expect(readingMs('Short?')).toBe(1500)
+    expect(readingMs('word '.repeat(40))).toBe(4000)
+  })
 })
 
 describe('QuizEngine', () => {
   it('scores a fast correct answer and moves on after the reveal', () => {
     const quiz = started('a')
-    expect(quiz.answer('a', 0, correctChoice(quiz), 0)).toBe(true)
+    expect(quiz.answer('a', 0, correctChoice(quiz), 0, 0)).toBe(true)
     expect(quiz.update(10)).toBe(true)
     const reveal = quiz.snapshot()
     expect(reveal.phase).toBe('reveal')
@@ -44,7 +61,7 @@ describe('QuizEngine', () => {
 
   it('gives nothing for a wrong answer', () => {
     const quiz = started('a')
-    quiz.answer('a', 0, (correctChoice(quiz) + 1) % 4, 0)
+    quiz.answer('a', 0, (correctChoice(quiz) + 1) % 4, 0, 0)
     quiz.update(1)
     const s = quiz.snapshot()
     if (s.phase !== 'reveal') throw new Error('expected reveal')
@@ -54,7 +71,7 @@ describe('QuizEngine', () => {
 
   it('waits for every online player, but not for offline ones', () => {
     const quiz = started('a', 'b')
-    quiz.answer('a', 0, 0, 100)
+    quiz.answer('a', 0, 0, 100, 100)
     expect(quiz.update(200)).toBe(false)
     quiz.setOnline('b', false)
     expect(quiz.update(300)).toBe(true)
@@ -64,15 +81,24 @@ describe('QuizEngine', () => {
     const quiz = started('a')
     expect(quiz.update(ANSWER_MS + GRACE_MS - 1)).toBe(false)
     expect(quiz.update(ANSWER_MS + GRACE_MS)).toBe(true)
-    expect(quiz.answer('a', 0, 0, 0)).toBe(false)
+    expect(quiz.answer('a', 0, 0, 0, 0)).toBe(false)
+  })
+
+  it('does not believe a claimed answer time far below when it arrived', () => {
+    const quiz = started('a')
+    quiz.answer('a', 0, correctChoice(quiz), 0, 12_000)
+    quiz.update(12_001)
+    const s = quiz.snapshot()
+    if (s.phase !== 'reveal') throw new Error('expected reveal')
+    expect(s.gained.a).toBe(points(12_000 - LAG_MS, readingMs(bank[s.q]?.q ?? '')))
   })
 
   it('accepts one answer per player per question', () => {
     const quiz = started('a', 'b')
-    expect(quiz.answer('a', 0, 1, 10)).toBe(true)
-    expect(quiz.answer('a', 0, 2, 20)).toBe(false)
-    expect(quiz.answer('a', 3, 2, 20)).toBe(false)
-    expect(quiz.answer('ghost', 0, 1, 10)).toBe(false)
+    expect(quiz.answer('a', 0, 1, 10, 10)).toBe(true)
+    expect(quiz.answer('a', 0, 2, 20, 20)).toBe(false)
+    expect(quiz.answer('a', 3, 2, 20, 20)).toBe(false)
+    expect(quiz.answer('ghost', 0, 1, 10, 10)).toBe(false)
   })
 
   it('plays ten distinct questions, easy ones first, then ranks players', () => {
@@ -84,8 +110,8 @@ describe('QuizEngine', () => {
       if (s.phase !== 'question') throw new Error('expected question')
       seen.add(s.q)
       if (i < 4) expect(bank[s.q]?.d).toBe(1)
-      quiz.answer('b', i, correctChoice(quiz), 1000)
-      quiz.answer('a', i, (correctChoice(quiz) + 1) % 4, 1000)
+      quiz.answer('b', i, correctChoice(quiz), 1000, 1000)
+      quiz.answer('a', i, (correctChoice(quiz) + 1) % 4, 1000, 1000)
       now += 1000
       quiz.update(now)
       now += REVEAL_MS
@@ -99,7 +125,7 @@ describe('QuizEngine', () => {
 
   it('keeps a rejoining player and their score', () => {
     const quiz = started('a')
-    quiz.answer('a', 0, correctChoice(quiz), 0)
+    quiz.answer('a', 0, correctChoice(quiz), 0, 0)
     quiz.update(1)
     quiz.setOnline('a', false)
     quiz.join('a', 'A')
