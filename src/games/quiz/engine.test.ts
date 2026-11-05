@@ -148,6 +148,15 @@ describe('QuizEngine', () => {
     expect(s.players[0]).toMatchObject({ name: 'A', score: 1000, online: true })
   })
 
+  it('forgets players who left before a new game starts', () => {
+    const quiz = new QuizEngine(bank, 3)
+    quiz.join('a', 'A')
+    quiz.join('b', 'B')
+    quiz.setOnline('b', false)
+    quiz.start(0)
+    expect(quiz.snapshot().players.map((p) => p.id)).toEqual(['a'])
+  })
+
   it('tells players with the same name apart', () => {
     const quiz = new QuizEngine(bank, 1)
     quiz.join('a', 'Echo')

@@ -89,6 +89,8 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
   let connecting = false
   let selected = 0
   let picked: number | undefined
+  /** A guest's last answer, kept until the referee confirms it (the host's link can drop). */
+  let sent: { n: number; choice: number; elapsed: number } | undefined
   let askedAt = 0
   let lobbyIndex = 0
   let copied = false
@@ -165,6 +167,10 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
     }
     // Back in a question this player already answered (after a reload): keep it locked.
     if (next.phase === 'question' && picked === undefined && next.answered.includes(me)) picked = -1
+    // Our answer never reached the referee (its link was down): send it again.
+    if (next.phase === 'question' && sent?.n === next.n && !next.answered.includes(me)) {
+      room?.send({ answer: sent } satisfies Message, host)
+    }
     if (next.phase === 'reveal' && prev?.phase !== 'reveal') {
       // The referee's record of this player's pick is what counts.
       picked = next.picks[me]
@@ -209,50 +215,54 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
     failure = undefined
     connecting = true
     draw()
-    const current = new Room(name, {
-      room: (codeNow, hostId, peers) => {
-        roomCode = codeNow
-        host = hostId
-        connecting = false
-        // A host that reconnects keeps its game; only the first connection makes the referee.
-        if (role === 'host' && !engine) referee()
-        updatePeers(peers)
-        draw()
-      },
-      peers: updatePeers,
-      message: (from, data) => {
-        if (typeof data !== 'object' || data === null) return
-        const m = data as Message
-        if ('s' in m && from === host) receive(m.s)
-        if ('answer' in m && engine && typeof m.answer === 'object' && m.answer) {
-          engine.answer(from, m.answer.n, m.answer.choice, m.answer.elapsed, now())
-          engine.update(now())
-          sync()
-        }
-      },
-      offline: (isOffline) => {
-        offline = isOffline
-        draw()
-      },
-      error: (reason) => {
-        if (current !== room) return
-        room = undefined
-        connecting = false
-        if (reason === 'no-room' && role === 'join' && !wire) {
-          spelling = new Letters(CODE_LETTERS, CODE_LENGTH)
+    const current = new Room(
+      name,
+      {
+        room: (codeNow, hostId, peers) => {
+          roomCode = codeNow
+          host = hostId
+          connecting = false
+          // A host that reconnects keeps its game; only the first connection makes the referee.
+          if (role === 'host' && !engine) referee()
+          updatePeers(peers)
           draw()
-          spelling.reject()
-          return
-        }
-        failure =
-          reason === 'full'
-            ? 'Room full'
-            : reason === 'replaced'
-              ? 'Playing elsewhere'
-              : 'Room closed'
-        draw()
+        },
+        peers: updatePeers,
+        message: (from, data) => {
+          if (typeof data !== 'object' || data === null) return
+          const m = data as Message
+          if ('s' in m && from === host) receive(m.s)
+          if ('answer' in m && engine && typeof m.answer === 'object' && m.answer) {
+            engine.answer(from, m.answer.n, m.answer.choice, m.answer.elapsed, now())
+            engine.update(now())
+            sync()
+          }
+        },
+        offline: (isOffline) => {
+          offline = isOffline
+          draw()
+        },
+        error: (reason) => {
+          if (current !== room) return
+          room = undefined
+          connecting = false
+          if (reason === 'no-room' && role === 'join' && !wire) {
+            spelling = new Letters(CODE_LETTERS, CODE_LENGTH)
+            draw()
+            spelling.reject()
+            return
+          }
+          failure =
+            reason === 'full'
+              ? 'Room full'
+              : reason === 'replaced'
+                ? 'Playing elsewhere'
+                : 'Room closed'
+          draw()
+        },
       },
-    })
+      role === 'host',
+    )
     room = current
     me = current.id
     if (joinCode) current.join(joinCode)
@@ -298,7 +308,8 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
       engine.update(now())
       sync()
     } else {
-      room?.send({ answer: { n: wire.n, choice: picked, elapsed } } satisfies Message, host)
+      sent = { n: wire.n, choice: picked, elapsed }
+      room?.send({ answer: sent } satisfies Message, host)
     }
     draw()
   }
@@ -320,6 +331,8 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
 
   return {
     input(e: Input) {
+      // Nothing acts on a game hidden behind a note.
+      if (!spelling && (failure || offline || hostAway || connecting)) return
       if (spelling) {
         if (spelling.input(e) === 'done') connect(spelling.value)
         else draw()

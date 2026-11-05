@@ -121,7 +121,9 @@ export class QuizEngine {
       free.delete(pick)
       this.picks.push(pick)
     }
-    for (const p of this.players.values()) {
+    // A new game is for the players here now; those who left are forgotten.
+    for (const p of [...this.players.values()]) {
+      if (!p.online) this.players.delete(p.id)
       p.score = 0
       p.right = 0
     }

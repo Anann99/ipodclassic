@@ -42,11 +42,17 @@ const RETRY_MS = [250, 500, 1000, 2000, 4000]
 const PING_MS = 4000
 /** No reply for this long means the socket died quietly (common after a phone sleeps). */
 const SILENT_MS = 9000
+/** A connection attempt that has not opened by now is abandoned and tried again. */
+const CONNECT_MS = 6000
 
 export class Room {
-  readonly id = playerId()
-  /** Proves to the relay that a reconnect is really this tab. Never shared with players. */
-  private readonly key = perTab('wheel:key')
+  /** Guests keep one id per tab, so a reload rejoins with their score. A host's game lives in
+   * memory, so each hosted room gets a fresh identity: a reloaded or copied tab cannot take
+   * over the host's seat. */
+  readonly id: string
+  /** Proves to the relay that a reconnect is really this player. Never shared with players. */
+  private readonly key: string
+  private openedAt = 0
   code: string | undefined
   private socket: WebSocket | undefined
   private closed = false
@@ -57,21 +63,33 @@ export class Room {
   private readonly events: RoomEvents
   private readonly name: string
   private readonly ping: number
-  /** Back from sleep or offline: reconnect at once if the socket is gone (not merely connecting). */
+  /** Back from sleep or offline: reconnect at once unless a fresh attempt is under way. */
   private readonly wake = () => {
     const state = this.socket?.readyState ?? WebSocket.CLOSED
-    if (document.visibilityState === 'visible' && !this.closed && state >= WebSocket.CLOSING) {
+    const stalled = state === WebSocket.CONNECTING && performance.now() - this.openedAt > CONNECT_MS
+    if (
+      document.visibilityState === 'visible' &&
+      !this.closed &&
+      (state >= WebSocket.CLOSING || stalled)
+    ) {
       this.reconnect(0)
     }
   }
 
-  constructor(name: string, events: RoomEvents) {
+  constructor(name: string, events: RoomEvents, hosting = false) {
     this.name = name
     this.events = events
+    this.id = hosting ? randomId() : playerId()
+    this.key = hosting ? randomId() : perTab('wheel:key')
     this.ping = window.setInterval(() => {
-      if (!this.isOpen) return
-      if (performance.now() - this.heard > SILENT_MS) this.socket?.close()
-      else this.write({ t: 'ping' })
+      const state = this.socket?.readyState
+      // A stalled handshake, or an open socket gone quiet: replace it now rather than waiting
+      // for a close handshake that a dead link will never answer.
+      const stalled =
+        state === WebSocket.CONNECTING && performance.now() - this.openedAt > CONNECT_MS
+      const silent = state === WebSocket.OPEN && performance.now() - this.heard > SILENT_MS
+      if (stalled || silent) this.reconnect(0)
+      else if (state === WebSocket.OPEN) this.write({ t: 'ping' })
     }, PING_MS)
     document.addEventListener('visibilitychange', this.wake)
     window.addEventListener('online', this.wake)
@@ -121,6 +139,7 @@ export class Room {
     const previous = this.socket
     const socket = new WebSocket(url)
     this.socket = socket
+    this.openedAt = performance.now()
     previous?.close()
     socket.onopen = () => {
       if (this.attempts > 0) this.events.offline?.(false)
@@ -150,7 +169,6 @@ export class Room {
     }
     socket.onclose = () => {
       if (this.closed || socket !== this.socket) return
-      if (this.attempts === 2) this.events.offline?.(true)
       this.reconnect(RETRY_MS[Math.min(this.attempts, RETRY_MS.length - 1)] as number)
     }
   }
@@ -159,8 +177,12 @@ export class Room {
   private reconnect(wait: number) {
     clearTimeout(this.retry)
     this.attempts += 1
+    // Say so after a couple of failed tries; a single blip passes unnoticed.
+    if (this.attempts === 2) this.events.offline?.(true)
     this.retry = window.setTimeout(() => {
-      if (!this.closed && !this.isOpen) this.open()
+      if (this.closed) return
+      const silent = this.isOpen && performance.now() - this.heard > SILENT_MS
+      if (!this.isOpen || silent) this.open()
     }, wait)
   }
 }

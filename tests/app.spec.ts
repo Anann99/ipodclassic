@@ -197,3 +197,18 @@ for (const [width, height] of SIZES) {
     expect(wheel.y + wheel.height).toBeLessThanOrEqual(height)
   })
 }
+
+test('a copy of the host tab that joins its own room is just another player', async ({ page }) => {
+  await press(page, 'ArrowDown', 'Enter', 'ArrowDown', 'Enter')
+  const code = (await page.locator('.code').textContent()) ?? ''
+  // window.open copies sessionStorage, the way a duplicated tab does.
+  const [copy] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.evaluate((url) => window.open(url), `/?room=${code}`),
+  ])
+  await expect(copy.locator('.lobby .code')).toHaveText(code)
+  await expect(page.locator('.names span')).toHaveCount(2)
+  await press(page, 'Enter')
+  await expect(copy.locator('.ask')).toBeVisible()
+  await expect(page.locator('.ask')).toBeVisible()
+})

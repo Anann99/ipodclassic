@@ -144,3 +144,32 @@ it('counts only connected players toward a full room, reusing seats of those who
   expect(room.peers.length).toBeLessThanOrEqual(MAX_PLAYERS)
   expect(room.peers.some((p) => p.id === 'h')).toBe(true)
 })
+
+it('survives a message larger than it accepts', async () => {
+  const big = await client()
+  big.ws.on('error', () => {})
+  big.ws.send('x'.repeat(64 * 1024))
+  await new Promise((done) => big.ws.once('close', done))
+  const after = await client()
+  after.send({ t: 'ping' })
+  expect(await after.next('pong')).toEqual({ t: 'pong' })
+})
+
+it('keeps a reused seat’s id for its owner', async () => {
+  const host = await client()
+  host.send({ t: 'host', id: 'h', key: 'kh', name: 'Host' })
+  const { code } = await host.next('room')
+  for (let i = 0; i < MAX_PLAYERS; i++) {
+    const guest = await client()
+    guest.send({ t: 'join', code, id: `g${i}`, key: `k${i}`, name: `G${i}` })
+    await guest.next('room')
+    guest.ws.close()
+    await new Promise((done) => guest.ws.once('close', done))
+  }
+  const thief = await client()
+  thief.send({ t: 'join', code, id: 'g0', key: 'wrong', name: 'Eve' })
+  expect(await thief.next('error')).toEqual({ t: 'error', reason: 'taken' })
+  const owner = await client()
+  owner.send({ t: 'join', code, id: 'g0', key: 'k0', name: 'G0' })
+  await owner.next('room')
+})

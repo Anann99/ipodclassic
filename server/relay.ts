@@ -20,10 +20,21 @@ export const PATH = '/ws'
 const MAX_MESSAGE_BYTES = 16 * 1024
 /** Rooms with nobody connected are kept this long so a host whose phone slept can return. */
 const EMPTY_ROOM_MS = 5 * 60_000
+/** A room nobody ever joined is not worth keeping as long. */
+const LONELY_ROOM_MS = 60_000
+/** Enough for any party; a bound so nobody can use up every code. */
+const MAX_ROOMS = 5000
 const HEARTBEAT_MS = 5_000
 
 type Member = { peer: Peer; key: string; socket: WebSocket | null; since: number }
-type Room = { code: string; host: string; members: Map<string, Member>; expires?: NodeJS.Timeout }
+type Room = {
+  code: string
+  host: string
+  members: Map<string, Member>
+  /** Keys of players whose seats were reused, so nobody else can take their id later. */
+  retired: Map<string, string>
+  expires?: NodeJS.Timeout
+}
 
 export function createRelay() {
   const rooms = new Map<string, Room>()
@@ -40,29 +51,30 @@ export function createRelay() {
   }
 
   const newCode = () => {
-    for (;;) {
+    if (rooms.size >= MAX_ROOMS) return undefined
+    for (let tries = 0; tries < 100; tries++) {
       let code = ''
       for (let i = 0; i < CODE_LENGTH; i++) {
         code += CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]
       }
       if (!rooms.has(code)) return code
     }
+    return undefined
   }
 
   /** Puts a socket in a room under `id`, or says why it cannot be. */
   const enter = (room: Room, socket: WebSocket, id: string, key: string, name: string) => {
     const existing = room.members.get(id)
-    if (existing && existing.key !== key) return send(socket, { t: 'error', reason: 'taken' })
-    if (!existing) {
-      const online = [...room.members.values()].filter((m) => m.socket)
-      if (online.length >= MAX_PLAYERS) return send(socket, { t: 'error', reason: 'full' })
+    const owner = existing?.key ?? room.retired.get(id)
+    if (owner !== undefined && owner !== key) return send(socket, { t: 'error', reason: 'taken' })
+    if (!existing && room.members.size >= MAX_PLAYERS) {
       // Seats of players who left are reused, oldest first; the host keeps theirs.
-      if (room.members.size >= MAX_PLAYERS) {
-        const gone = [...room.members.values()]
-          .filter((m) => !m.socket && m.peer.id !== room.host)
-          .sort((a, b) => a.since - b.since)[0]
-        if (gone) room.members.delete(gone.peer.id)
-      }
+      const gone = [...room.members.values()]
+        .filter((m) => !m.socket && m.peer.id !== room.host)
+        .sort((a, b) => a.since - b.since)[0]
+      if (!gone) return send(socket, { t: 'error', reason: 'full' })
+      room.members.delete(gone.peer.id)
+      room.retired.set(gone.peer.id, gone.key)
     }
     if (existing?.socket && existing.socket !== socket) {
       send(existing.socket, { t: 'error', reason: 'replaced' })
@@ -93,6 +105,8 @@ export function createRelay() {
     let self: string | undefined
     alive.add(socket)
     socket.on('pong', () => alive.add(socket))
+    // Oversized or malformed frames: ws closes the socket; without a listener it would throw.
+    socket.on('error', () => socket.terminate())
 
     socket.on('message', (raw) => {
       // A backstop: no message, however malformed, may take the relay down.
@@ -128,8 +142,10 @@ export function createRelay() {
       }
       let target: Room | undefined
       if (message.t === 'host') {
-        target = { code: newCode(), host: message.id, members: new Map() }
-        rooms.set(target.code, target)
+        const code = newCode()
+        if (!code) return send(socket, { t: 'error', reason: 'full' })
+        target = { code, host: message.id, members: new Map(), retired: new Map() }
+        rooms.set(code, target)
       } else {
         target =
           typeof message.code === 'string' ? rooms.get(message.code.toUpperCase()) : undefined
@@ -149,7 +165,8 @@ export function createRelay() {
       broadcastPeers(room)
       const r = room
       if ([...r.members.values()].every((m) => !m.socket)) {
-        r.expires = setTimeout(() => rooms.delete(r.code), EMPTY_ROOM_MS)
+        const wait = r.members.size > 1 ? EMPTY_ROOM_MS : LONELY_ROOM_MS
+        r.expires = setTimeout(() => rooms.delete(r.code), wait)
       }
     })
   })

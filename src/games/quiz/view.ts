@@ -170,7 +170,12 @@ export class QuizView {
         } else {
           parts.push(bar('Quiz'))
           const list = make('ul', 'rows standings')
-          s.standings.forEach((p, i) => {
+          // Eight rows fit: the leaders, and always this player.
+          const mine = s.standings.findIndex((p) => p.id === s.me)
+          const shown = s.standings
+            .map((p, i) => ({ p, i }))
+            .filter(({ i }) => i < 7 || i === mine || (mine < 7 && i === 7))
+          shown.forEach(({ p, i }) => {
             const li = make('li', p.id === s.me ? 'on' : '')
             li.append(make('span', 'rank', String(i + 1)), make('span', '', p.name))
             li.append(make('span', 'value', String(p.score)))
