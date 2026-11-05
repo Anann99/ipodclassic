@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#e4e4e8" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Classic" />
+    <title>Classic</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="device">
+      <div class="screen">
+        <div class="stage">
+          <header class="title" aria-live="polite"></header>
+          <div class="layers"></div>
+        </div>
+      </div>
+      <div class="dock">
+        <div class="wheel">
+          <span class="key menu" data-button="menu">MENU</span>
+          <svg class="key prev" data-button="prev" viewBox="0 0 24 24" aria-label="Previous">
+            <path d="M6 6h2v12H6zM20 6v12l-10-6z" />
+          </svg>
+          <svg class="key next" data-button="next" viewBox="0 0 24 24" aria-label="Next">
+            <path d="M16 6h2v12h-2zM4 6v12l10-6z" />
+          </svg>
+          <svg class="key play" data-button="play" viewBox="0 0 24 24" aria-label="Play or pause">
+            <path d="M3 6v12l9-6zM14 6h2.6v12H14zM18.4 6H21v12h-2.6z" />
+          </svg>
+          <span class="center" data-button="select" aria-label="Select"></span>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
