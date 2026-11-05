@@ -186,6 +186,18 @@ describe('power-ups', () => {
     expect(s.lives).toBe(3)
   })
 
+  it('saves a multi-ball caught between levels for the next serve', () => {
+    const s = create(4)
+    s.phase = 'clear'
+    s.clock = 0
+    s.capsules = [{ power: 'multi', r: PADDLE_R - 10, angle: s.paddle }]
+    run(s, 0.5)
+    expect(s.pendingMulti).toBe(true)
+    run(s, 1.2)
+    step(s, { turn: 0, launch: true }, DT)
+    expect(s.balls).toHaveLength(3)
+  })
+
   it('carries a capsule from the innermost ring into the next level', () => {
     const s = create(4)
     s.phase = 'clear'

@@ -52,7 +52,10 @@ function start(ctx: GameContext): Session {
   /** Screen shake builds as trauma and fades; it is off for reduced motion. */
   let trauma = 0
   let newBest = false
-  let before: { paddle: number; balls: { x: number; y: number }[] } = { paddle: 0, balls: [] }
+  let before: { paddle: number; balls: { x: number; y: number }[] } = {
+    paddle: state.paddle,
+    balls: [],
+  }
   const calm = matchMedia('(prefers-reduced-motion: reduce)')
   let time = 0
   const particles: Particle[] = []

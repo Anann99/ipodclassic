@@ -82,6 +82,17 @@ describe('WheelGesture', () => {
     expect(g.up(1, TAP_MS + 1)).toEqual([])
   })
 
+  it('treats a slow small turn as steering, not a tap', () => {
+    const g = new WheelGesture()
+    g.down(1, ...at(-90), 0)
+    g.move(1, ...at(-88))
+    g.move(1, ...at(-86))
+    expect(g.up(1, 320)).toEqual([])
+    g.down(2, ...at(-90), 400)
+    g.move(2, ...at(-89))
+    expect(g.up(2, 520)).toHaveLength(2)
+  })
+
   it('counts two fingers on the center as one press', () => {
     const g = new WheelGesture()
     expect(g.down(1, 0.05, 0, 0)).toHaveLength(1)

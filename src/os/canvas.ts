@@ -68,7 +68,7 @@ export function loop(update: (dt: number) => void, draw: (alpha: number) => void
       update(step)
       pending -= step
     }
-    draw(pending / step)
+    draw(Math.min(1, Math.max(0, pending / step)))
     frame = requestAnimationFrame(tick)
   }
   return {

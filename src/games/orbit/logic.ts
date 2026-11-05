@@ -51,6 +51,8 @@ export type State = {
   speed: number
   rings: Ring[]
   bricks: Brick[]
+  /** A multi-ball caught while no ball was in play splits the next serve. */
+  pendingMulti: boolean
   /** Bricks the level started with; the last few speed the rings up. */
   total: number
   balls: Ball[]
@@ -89,6 +91,7 @@ export function create(seed = 1): State {
     speed: 0,
     rings: [],
     bricks: [],
+    pendingMulti: false,
     total: 0,
     balls: [],
     capsules: [],
@@ -150,6 +153,10 @@ function launch(s: State, events: Event[]) {
   s.clock = 0
   s.combo = 0
   events.push({ type: 'serve' })
+  if (s.pendingMulti) {
+    s.pendingMulti = false
+    split(s)
+  }
 }
 
 export function step(s: State, controls: Controls, dt: number): Event[] {
@@ -338,14 +345,20 @@ function apply(s: State, power: Power) {
   if (power === 'life') s.lives = Math.min(MAX_LIVES, s.lives + 1)
   if (power === 'wide') s.wideLeft = WIDE_TIME
   if (power === 'multi') {
-    const ball = s.balls[0]
-    if (!ball) return
-    for (const turn of [-0.4, 0.4]) {
-      if (s.balls.length >= MAX_BALLS) break
-      const c = Math.cos(turn)
-      const n = Math.sin(turn)
-      s.balls.push({ ...ball, vx: ball.vx * c - ball.vy * n, vy: ball.vx * n + ball.vy * c })
-    }
+    if (s.balls.length) split(s)
+    else s.pendingMulti = true
+  }
+}
+
+/** Two more balls fan out from the first, up to three in play. */
+function split(s: State) {
+  const ball = s.balls[0]
+  if (!ball) return
+  for (const turn of [-0.4, 0.4]) {
+    if (s.balls.length >= MAX_BALLS) break
+    const c = Math.cos(turn)
+    const n = Math.sin(turn)
+    s.balls.push({ ...ball, vx: ball.vx * c - ball.vy * n, vy: ball.vx * n + ball.vy * c })
   }
 }
 

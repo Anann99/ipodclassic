@@ -22,6 +22,8 @@ const REVERSAL = (2 * Math.PI) / 180
 /** Ring buttons fire on a tap: lifted within this time, without scrolling. A thumb resting
  * on the ring (to steer a paddle, or before turning) never presses anything. */
 export const TAP_MS = 500
+/** Past this, a touch that turned at all is steering (a paddle nudge), not a tap. */
+const STEER_MS = 200
 /** Center button radius as a fraction of the wheel radius. */
 export const CENTER_RADIUS = 0.38
 /** Angles are unreliable this close to the middle, so tracking pauses there. */
@@ -142,7 +144,11 @@ export class WheelGesture {
     this.pointers.delete(id)
     if (p.zone === 'center') return this.releaseCenter()
     this.ringOwner = null
-    if (p.scrolling || time - p.start > TAP_MS) return []
+    // A tap is quick and still. A slower touch that turned even a little was steering.
+    const held = time - p.start
+    if (p.scrolling || held > TAP_MS || (held > STEER_MS && Math.abs(p.travel) >= REVERSAL)) {
+      return []
+    }
     return [
       { type: 'press', button: p.button },
       { type: 'release', button: p.button },
