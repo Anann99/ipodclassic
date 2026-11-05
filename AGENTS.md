@@ -8,6 +8,7 @@ click-wheel games. No framework, one runtime dependency (`ws`, server only).
 - `npm run dev`: the site and the multiplayer relay, also on your LAN (`--host`)
 - `npm run check`: lint, types and unit tests. Run it before every commit.
 - `npm run e2e`: Playwright, desktop keys and a phone touchscreen
+- `npm run shots`: every screen as a PNG in `test-results/shots/`, phone and desktop, both finishes
 - `npm run build && npm start`: the production server on port 8080 (or `PORT`)
 
 ## Map

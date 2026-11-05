@@ -50,15 +50,19 @@ browser                                         node (dev: inside Vite)
    reversal hysteresis, a dead zone near the center), the clicker, haptics (Android vibrates;
    iOS via a native switch on tap), the menu stack, Settings, back gesture as Menu.
 3. **Orbit** (done). Ring breakout with five layout patterns, spinning rings, three power-ups,
-   combo scoring, and a best score. A bot plays every level in tests of pacing.
+   combo scoring, and a best score. Bounces use each brick's moving surface; paddle hits aim
+   through the brick field. A bot checks pacing in the tests.
 4. **Quiz** (done). 260 original questions, written and fact-checked twice, easy to hard
    within a game; time-based points.
 5. **Rooms** (done). Host, join by code or `?room=` link, Invite via the share sheet,
    reconnect after a phone sleeps, works on a plain-http LAN.
-6. **Install** (next). App icons, offline play with a service worker, a share card for scores.
-7. **Online** (when wanted). Deploy the same Node server (Render, Fly, a small VPS) or move rooms
+6. **Install** (done). App icons, a home-screen manifest, offline play with a service worker.
+7. **Review** (done). Five independent reviews (input, navigation, Orbit, multiplayer, design),
+   each finding re-checked by a skeptic: 36 confirmed and fixed, then a second round on the
+   fixes, with regression tests wherever a browser or a simulation can check them.
+8. **Online** (when wanted). Deploy the same Node server (Render, Fly, a small VPS) or move rooms
    to Cloudflare Durable Objects. Add a server-side referee if strangers play together.
-8. **More games**. In order of fit for the wheel and for playing together: Klondike, Reversi,
+9. **More games**. In order of fit for the wheel and for playing together: Klondike, Reversi,
    Hold'em with play chips, a radial aim-and-shoot, mini golf, a lane rhythm game. Orbit
    co-op (two paddles on one ring) once rooms are online.
 
