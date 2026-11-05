@@ -17,7 +17,7 @@
   --wheel-1: #ffffff;
   --wheel-2: #eeeef1;
   --wheel-shade: rgb(0 0 0 / 0.07);
-  --key: #76777e;
+  --key: #6c6d74;
   --key-on: #4d4e54;
   --center-1: #f3f3f5;
   --center-2: #dcdde1;
@@ -598,7 +598,7 @@ body {
 
 /* Phones: the phone becomes the device. */
 
-@media (max-width: 540px) {
+@media (max-width: 540px) and (orientation: portrait) {
   body {
     background: linear-gradient(165deg, var(--face-1), var(--face-2));
   }
@@ -612,7 +612,10 @@ body {
     box-shadow: none;
   }
 
+  /* Short windows: the screen gives up width so the wheel keeps at least ~200px of height. */
   .screen {
+    justify-self: center;
+    width: min(calc(100vw - 40px), calc((100dvh - 230px) * 4 / 3));
     padding: 6px;
     border-radius: 12px;
   }
@@ -624,7 +627,7 @@ body {
 
 /* Phones on their side: screen left, wheel right. */
 
-@media (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3 / 2) {
+@media (orientation: landscape) and (max-height: 540px) {
   body {
     background: linear-gradient(165deg, var(--face-1), var(--face-2));
   }

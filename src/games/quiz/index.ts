@@ -181,9 +181,16 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
         right ? `Correct, +${next.gained[me]}` : `Wrong. ${next.answers[next.correct] ?? ''}`,
       )
     }
+    if (next.phase === 'lobby' && prev?.phase !== 'lobby' && roomCode) {
+      announce(`Room ${[...roomCode].join(' ')}`)
+    }
     if (next.phase === 'final' && prev?.phase !== 'final') {
       SOUND.done()
       const mine = next.players.find((p) => p.id === me)
+      const rank = next.players.findIndex((p) => p.id === me) + 1
+      announce(
+        role === 'solo' ? `${mine?.score ?? 0} points` : `Place ${rank} of ${next.players.length}`,
+      )
       if (role === 'solo' && mine && mine.score > best) {
         best = mine.score
         ctx.save('best', best)
@@ -341,6 +348,7 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
       if (e.type === 'tick') {
         if (wire?.phase === 'lobby' && role === 'host') {
           lobbyIndex = Math.max(0, Math.min(actions().length - 1, lobbyIndex + e.dir))
+          announce(actions()[lobbyIndex] ?? '')
         } else if (wire?.phase === 'question' && picked === undefined) {
           selected = Math.max(0, Math.min(wire.answers.length - 1, selected + e.dir))
           announce(wire.answers[selected] ?? '')

@@ -26,7 +26,7 @@ new ResizeObserver(([entry]) => {
 // the page: the device face on phones, the backdrop elsewhere.
 const dark = matchMedia('(prefers-color-scheme: dark)')
 const phone = matchMedia(
-  '(max-width: 540px), (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3 / 2)',
+  '(max-width: 540px) and (orientation: portrait), (orientation: landscape) and (max-height: 540px)',
 )
 const applyFinish = () => {
   const { finish } = settings.get()

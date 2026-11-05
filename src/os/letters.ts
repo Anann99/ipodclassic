@@ -41,6 +41,7 @@ export class Letters {
       const letter = this.alphabet[this.candidate] as string
       if (letter === DONE) return this.value ? 'done' : undefined
       if (letter === ERASE) this.value = this.value.slice(0, -1)
+      else if (this.word && this.value.length >= this.length) return undefined
       else this.value += letter
       announce(this.value)
       if (this.value.length >= this.length) {
@@ -50,6 +51,7 @@ export class Letters {
     } else if (e.type === 'press' && e.button === 'menu') {
       if (this.word || !this.value) return 'back'
       this.value = this.value.slice(0, -1)
+      announce(this.value || 'Empty')
     }
     this.render()
     return undefined
@@ -57,6 +59,7 @@ export class Letters {
 
   /** Shake and clear, for a code that did not work. */
   reject(): void {
+    announce('No room')
     this.value = ''
     this.render()
     this.el.animate(
@@ -67,7 +70,8 @@ export class Letters {
 
   private render() {
     // Codes show every slot; names grow one slot at a time.
-    const count = this.word ? Math.min(this.length, this.value.length + 1) : this.length
+    // Words keep one more slot than their letters, so erase and done stay in view when full.
+    const count = this.word ? Math.min(this.length + 1, this.value.length + 1) : this.length
     const slots: HTMLElement[] = []
     for (let i = 0; i < count; i++) {
       const slot = document.createElement('span')

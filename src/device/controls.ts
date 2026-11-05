@@ -31,16 +31,21 @@ const ARROWS: Record<string, 1 | -1> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -
 export function bindControls(wheel: HTMLElement, emit: (input: Input) => void): void {
   const gesture = new WheelGesture()
   const lit = new Map<Button, number>()
+  const unlight = new Map<Button, number>()
 
   const show = (button: Button, on: boolean) => {
     const key = wheel.querySelector(`[data-button="${button}"]`)
+    clearTimeout(unlight.get(button))
     if (on) {
       lit.set(button, performance.now())
       key?.classList.add('pressed')
       return
     }
     const wait = PRESS_VISIBLE_MS - (performance.now() - (lit.get(button) ?? 0))
-    setTimeout(() => key?.classList.remove('pressed'), Math.max(0, wait))
+    unlight.set(
+      button,
+      window.setTimeout(() => key?.classList.remove('pressed'), Math.max(0, wait)),
+    )
   }
 
   const send = (inputs: Input[]) => {
@@ -144,6 +149,8 @@ export function bindControls(wheel: HTMLElement, emit: (input: Input) => void): 
   // detent; smooth trackpad scrolling accumulates, keeping its remainder.
   let scrolled = 0
   let lastScroll = 0
+  /** Whether the current burst of scroll events came from a notched mouse wheel. */
+  let notched = false
   window.addEventListener(
     'wheel',
     (e) => {
@@ -151,11 +158,13 @@ export function bindControls(wheel: HTMLElement, emit: (input: Input) => void): 
       e.preventDefault()
       const lines = e.deltaMode !== 0
       const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1)
-      const burst = e.timeStamp - lastScroll > BURST_GAP_MS
+      // A burst is classified by its first event: a big first step means a notched wheel,
+      // and then every event in the burst is exactly one detent.
+      if (e.timeStamp - lastScroll > BURST_GAP_MS) notched = lines || Math.abs(px) >= NOTCH
       lastScroll = e.timeStamp
       if (!px) return
       const dir = Math.sign(px) as 1 | -1
-      if (lines || (burst && Math.abs(px) >= NOTCH)) {
+      if (notched) {
         scrolled = 0
         emit({ type: 'turn', delta: dir * TICK })
         emit({ type: 'tick', dir })

@@ -33,6 +33,8 @@ export function canvas2d(parent: HTMLElement, width = 320, height = 240) {
     density.addEventListener('change', onDensity)
   }
   const onDensity = () => {
+    // A canvas that left the page stops listening, so it can be collected.
+    if (!canvas.isConnected) return density?.removeEventListener('change', onDensity)
     resize()
     watchDensity()
   }

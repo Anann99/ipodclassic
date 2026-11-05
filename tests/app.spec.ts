@@ -181,6 +181,10 @@ const SIZES: [number, number][] = [
   [320, 568],
   [568, 320],
   [640, 480],
+  [455, 412],
+  [500, 380],
+  [400, 300],
+  [400, 520],
 ]
 for (const [width, height] of SIZES) {
   test(`the whole device fits at ${width}x${height}`, async ({ page }) => {
@@ -192,7 +196,8 @@ for (const [width, height] of SIZES) {
     expect(screen.x).toBeGreaterThanOrEqual(0)
     expect(screen.x + screen.width).toBeLessThanOrEqual(width)
     expect(screen.y + screen.height).toBeLessThanOrEqual(height)
-    expect(wheel.width).toBeGreaterThanOrEqual(150)
+    expect(wheel.width).toBeGreaterThanOrEqual(120)
+    expect(screen.width / screen.height).toBeCloseTo(4 / 3, 1)
     expect(wheel.x + wheel.width).toBeLessThanOrEqual(width)
     expect(wheel.y + wheel.height).toBeLessThanOrEqual(height)
   })

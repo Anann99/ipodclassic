@@ -44,7 +44,7 @@ const SOUNDS: Partial<Record<Event['type'], () => void>> = {
 }
 
 function start(ctx: GameContext): Session {
-  const { ctx: g } = canvas2d(ctx.root)
+  const { ctx: g, dispose } = canvas2d(ctx.root)
   let state: State = create(Math.floor(Math.random() * 2 ** 31))
   let best = ctx.load('best', 0)
   let turn = 0
@@ -145,6 +145,7 @@ function start(ctx: GameContext): Session {
     resume: () => game.start(),
     destroy: () => {
       game.stop()
+      dispose()
       if (state.score > best) ctx.save('best', state.score)
     },
   }
