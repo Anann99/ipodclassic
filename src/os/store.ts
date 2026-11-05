@@ -1,15 +1,16 @@
 // Persistent key-value storage. Storage can be unavailable (private mode, blocked site data),
-// so every access falls back to memory and never throws.
+// so refused writes are kept in memory and nothing ever throws.
 
 const memory = new Map<string, string>()
 const PREFIX = 'wheel:'
 
 export function load<T>(key: string, fallback: T): T {
-  let raw: string | null | undefined
-  try {
-    raw = localStorage.getItem(PREFIX + key)
-  } catch {
-    raw = memory.get(key)
+  // A write that storage refused (full, or private mode) is kept here and wins.
+  let raw: string | null | undefined = memory.get(key)
+  if (raw === undefined) {
+    try {
+      raw = localStorage.getItem(PREFIX + key)
+    } catch {}
   }
   if (raw == null) return fallback
   try {
@@ -21,8 +22,10 @@ export function load<T>(key: string, fallback: T): T {
 
 export function save(key: string, value: unknown): void {
   const raw = JSON.stringify(value)
-  memory.set(key, raw)
   try {
     localStorage.setItem(PREFIX + key, raw)
-  } catch {}
+    memory.delete(key)
+  } catch {
+    memory.set(key, raw)
+  }
 }

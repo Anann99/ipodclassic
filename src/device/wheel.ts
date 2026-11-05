@@ -19,8 +19,9 @@ export const TICK = (2 * Math.PI) / TICKS_PER_TURN
 export const SCROLL_SLOP = (6 * Math.PI) / 180
 /** Backward travel that counts as a reversal; smaller wobbles do not undo progress. */
 const REVERSAL = (2 * Math.PI) / 180
-/** Ring buttons fire on release, or after being held this long without scrolling. */
-export const HOLD_MS = 350
+/** Ring buttons fire on a tap: lifted within this time, without scrolling. A thumb resting
+ * on the ring (to steer a paddle, or before turning) never presses anything. */
+export const TAP_MS = 500
 /** Center button radius as a fraction of the wheel radius. */
 export const CENTER_RADIUS = 0.38
 /** Angles are unreliable this close to the middle, so tracking pauses there. */
@@ -44,7 +45,6 @@ type Pointer =
       dir: 0 | 1 | -1
       back: number
       scrolling: boolean
-      held: boolean
     }
 
 export function ringButton(x: number, y: number): Button {
@@ -67,13 +67,16 @@ export function angleDelta(from: number, to: number): number {
 export class WheelGesture {
   private pointers = new Map<number, Pointer>()
   private ringOwner: number | null = null
+  /** Fingers on the center button; it presses on the first and releases on the last. */
+  private centers = 0
 
   down(id: number, x: number, y: number, time: number): Input[] {
     const r = Math.hypot(x, y)
     if (r > OUTER_RADIUS || this.pointers.has(id)) return []
     if (r <= CENTER_RADIUS) {
       this.pointers.set(id, { zone: 'center' })
-      return [{ type: 'press', button: 'select' }]
+      this.centers += 1
+      return this.centers === 1 ? [{ type: 'press', button: 'select' }] : []
     }
     if (this.ringOwner !== null) return []
     this.ringOwner = id
@@ -87,7 +90,6 @@ export class WheelGesture {
       dir: 0,
       back: 0,
       scrolling: false,
-      held: false,
     })
     return []
   }
@@ -134,26 +136,13 @@ export class WheelGesture {
     return out
   }
 
-  /** Call periodically while a pointer is down so held ring buttons can fire. */
-  poll(time: number): Input[] {
-    const out: Input[] = []
-    for (const p of this.pointers.values()) {
-      if (p.zone === 'ring' && !p.scrolling && !p.held && time - p.start >= HOLD_MS) {
-        p.held = true
-        out.push({ type: 'press', button: p.button })
-      }
-    }
-    return out
-  }
-
-  up(id: number): Input[] {
+  up(id: number, time: number): Input[] {
     const p = this.pointers.get(id)
     if (!p) return []
     this.pointers.delete(id)
-    if (p.zone === 'center') return [{ type: 'release', button: 'select' }]
+    if (p.zone === 'center') return this.releaseCenter()
     this.ringOwner = null
-    if (p.held) return [{ type: 'release', button: p.button }]
-    if (p.scrolling) return []
+    if (p.scrolling || time - p.start > TAP_MS) return []
     return [
       { type: 'press', button: p.button },
       { type: 'release', button: p.button },
@@ -165,9 +154,14 @@ export class WheelGesture {
     const p = this.pointers.get(id)
     if (!p) return []
     this.pointers.delete(id)
-    if (p.zone === 'center') return [{ type: 'release', button: 'select' }]
+    if (p.zone === 'center') return this.releaseCenter()
     this.ringOwner = null
-    return p.held ? [{ type: 'release', button: p.button }] : []
+    return []
+  }
+
+  private releaseCenter(): Input[] {
+    this.centers -= 1
+    return this.centers === 0 ? [{ type: 'release', button: 'select' }] : []
   }
 
   get active(): boolean {

@@ -159,6 +159,8 @@ export function step(s: State, controls: Controls, dt: number): Event[] {
 
   if (s.phase === 'over') return events
   if (s.phase === 'clear') {
+    // Power-ups still falling can still be caught while the level celebrates.
+    moveCapsules(s, dt, events)
     if (s.clock >= CLEAR_TIME) {
       s.level += 1
       s.phase = 'serve'
@@ -234,7 +236,9 @@ function substep(s: State, ball: Ball, dt: number, events: Event[]): boolean {
     const reach = Math.min(MAX_AIM, (field + BALL_R + AIM_MARGIN) / PADDLE_R)
     s.idle = s.combo === 0 ? s.idle + 1 : 0
     const jitter = (random(s) - 0.5) * (0.08 + Math.min(0.6, s.idle * 0.15))
-    const out = angle + Math.PI - Math.asin(offset * reach) + jitter
+    const limit = Math.asin(reach)
+    const aim = Math.max(-limit, Math.min(limit, Math.asin(offset * reach) - jitter))
+    const out = angle + Math.PI - aim
     const next = Math.min(s.speed * 1.25, speed * 1.015)
     ball.vx = Math.cos(out) * next
     ball.vy = Math.sin(out) * next

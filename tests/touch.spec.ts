@@ -51,3 +51,19 @@ test('the phone becomes the device: no page scroll, the wheel fills the lower ha
     viewport.height,
   )
 })
+
+test('a thumb resting on the ring never presses Menu, even in a game', async ({ page }) => {
+  await page.goto('/')
+  const box = await page.locator('.wheel').boundingBox()
+  if (!box) throw new Error('no wheel')
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
+  await expect(page.locator('.play canvas')).toBeVisible()
+  const cdp = await page.context().newCDPSession(page)
+  const top = [{ x: box.x + box.width / 2, y: box.y + box.height * 0.12 }]
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: top })
+  await page.waitForTimeout(900)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await page.waitForTimeout(300)
+  await expect(page.locator('.view:not([hidden]) .rows li.on')).toHaveCount(0)
+  await expect(page.locator('.play canvas')).toBeVisible()
+})

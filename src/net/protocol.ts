@@ -7,9 +7,13 @@ export const MAX_PLAYERS = 8
 
 export type Peer = { id: string; name: string; online: boolean }
 
+/**
+ * `id` is public (everyone in the room sees it); `key` is a secret the same tab sends again
+ * when it reconnects, so nobody else can take over its id.
+ */
 export type ClientMessage =
-  | { t: 'host'; id: string; name: string }
-  | { t: 'join'; code: string; id: string; name: string }
+  | { t: 'host'; id: string; key: string; name: string }
+  | { t: 'join'; code: string; id: string; key: string; name: string }
   | { t: 'send'; to?: string; data: unknown }
   | { t: 'ping' }
 
@@ -18,4 +22,4 @@ export type ServerMessage =
   | { t: 'room'; code: string; host: string; peers: Peer[] }
   | { t: 'peers'; peers: Peer[] }
   | { t: 'msg'; from: string; data: unknown }
-  | { t: 'error'; reason: 'no-room' | 'full' | 'bad-message' }
+  | { t: 'error'; reason: 'no-room' | 'full' | 'taken' | 'replaced' | 'bad-message' }

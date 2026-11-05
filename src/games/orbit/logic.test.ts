@@ -67,6 +67,20 @@ describe('Orbit', () => {
     expect(s.paddle).toBeCloseTo(before + 0.3)
   })
 
+  it('never aims an edge hit past the brick field, however long nothing breaks', () => {
+    const s = create(1)
+    s.idle = 50
+    for (let i = 0; i < 200; i++) {
+      place(s, PADDLE_R - 6, s.paddle + s.width / 2, 150)
+      step(s, idle, DT)
+      const b = s.balls[0]
+      if (!b) continue
+      // Distance from the center to the ball's straight path.
+      const miss = Math.abs((b.x - CX) * b.vy - (b.y - CY) * b.vx) / Math.hypot(b.vx, b.vy)
+      expect(miss).toBeLessThan(PADDLE_R * Math.sin(Math.PI / 3) + 0.5)
+    }
+  })
+
   it('bounces a ball that reaches the paddle back inward', () => {
     const s = create(1)
     s.bricks = s.bricks.slice(0, 1)
@@ -158,6 +172,18 @@ describe('pacing', () => {
       }
       expect(s.level).toBeGreaterThan(6)
     }
+  })
+})
+
+describe('power-ups', () => {
+  it('keeps falling during the level-clear pause and can still be caught', () => {
+    const s = create(4)
+    s.phase = 'clear'
+    s.clock = 0
+    s.lives = 2
+    s.capsules = [{ power: 'life', r: PADDLE_R - 20, angle: s.paddle }]
+    expect(run(s, 1)).toContainEqual({ type: 'power', power: 'life' })
+    expect(s.lives).toBe(3)
   })
 })
 

@@ -96,6 +96,8 @@ function start(ctx: GameContext): Session {
         newBest = false
         particles.length = 0
         trail.length = 0
+        // The press that restarted should not also serve: the new game waits to be served.
+        launch = false
       }
       before = { paddle: state.paddle, balls: state.balls.map((b) => ({ x: b.x, y: b.y })) }
       const events = step(state, { turn, launch }, dt)

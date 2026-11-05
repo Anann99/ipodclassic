@@ -22,7 +22,7 @@ const MAX_MESSAGE_BYTES = 16 * 1024
 const EMPTY_ROOM_MS = 5 * 60_000
 const HEARTBEAT_MS = 5_000
 
-type Member = { peer: Peer; socket: WebSocket | null }
+type Member = { peer: Peer; key: string; socket: WebSocket | null; since: number }
 type Room = { code: string; host: string; members: Map<string, Member>; expires?: NodeJS.Timeout }
 
 export function createRelay() {
@@ -49,13 +49,30 @@ export function createRelay() {
     }
   }
 
-  const enter = (room: Room, socket: WebSocket, id: string, name: string) => {
-    clearTimeout(room.expires)
+  /** Puts a socket in a room under `id`, or says why it cannot be. */
+  const enter = (room: Room, socket: WebSocket, id: string, key: string, name: string) => {
     const existing = room.members.get(id)
-    if (existing?.socket && existing.socket !== socket) existing.socket.close()
-    room.members.set(id, { peer: { id, name, online: true }, socket })
+    if (existing && existing.key !== key) return send(socket, { t: 'error', reason: 'taken' })
+    if (!existing) {
+      const online = [...room.members.values()].filter((m) => m.socket)
+      if (online.length >= MAX_PLAYERS) return send(socket, { t: 'error', reason: 'full' })
+      // Seats of players who left are reused, oldest first; the host keeps theirs.
+      if (room.members.size >= MAX_PLAYERS) {
+        const gone = [...room.members.values()]
+          .filter((m) => !m.socket && m.peer.id !== room.host)
+          .sort((a, b) => a.since - b.since)[0]
+        if (gone) room.members.delete(gone.peer.id)
+      }
+    }
+    if (existing?.socket && existing.socket !== socket) {
+      send(existing.socket, { t: 'error', reason: 'replaced' })
+      existing.socket.close()
+    }
+    clearTimeout(room.expires)
+    room.members.set(id, { peer: { id, name, online: true }, key, socket, since: Date.now() })
     send(socket, { t: 'room', code: room.code, host: room.host, peers: peers(room) })
     broadcastPeers(room, socket)
+    return true
   }
 
   // Drop sockets that stopped answering pings (phones that slept without closing).
@@ -84,26 +101,34 @@ export function createRelay() {
       } catch {
         return send(socket, { t: 'error', reason: 'bad-message' })
       }
+      if (typeof message !== 'object' || message === null) {
+        return send(socket, { t: 'error', reason: 'bad-message' })
+      }
       if (message.t === 'ping') return send(socket, { t: 'pong' })
-      if (message.t === 'host' && !room && typeof message.id === 'string') {
-        room = { code: newCode(), host: message.id, members: new Map() }
-        rooms.set(room.code, room)
-        self = message.id
-        enter(room, socket, self, clean(message.name))
-      } else if (message.t === 'join' && !room && typeof message.id === 'string') {
-        const target = rooms.get(String(message.code).toUpperCase())
-        if (!target) return send(socket, { t: 'error', reason: 'no-room' })
-        if (!target.members.has(message.id) && target.members.size >= MAX_PLAYERS) {
-          return send(socket, { t: 'error', reason: 'full' })
-        }
-        room = target
-        self = message.id
-        enter(room, socket, self, clean(message.name))
-      } else if (message.t === 'send' && room && self) {
+      if (message.t === 'send') {
+        if (!room || !self) return
         const out: ServerMessage = { t: 'msg', from: self, data: message.data }
         for (const [id, m] of room.members) {
           if (id !== self && (message.to === undefined || message.to === id)) send(m.socket, out)
         }
+        return
+      }
+      if (message.t !== 'host' && message.t !== 'join') return
+      if (room || !isToken(message.id) || !isToken(message.key)) {
+        return send(socket, { t: 'error', reason: 'bad-message' })
+      }
+      let target: Room | undefined
+      if (message.t === 'host') {
+        target = { code: newCode(), host: message.id, members: new Map() }
+        rooms.set(target.code, target)
+      } else {
+        target =
+          typeof message.code === 'string' ? rooms.get(message.code.toUpperCase()) : undefined
+        if (!target) return send(socket, { t: 'error', reason: 'no-room' })
+      }
+      if (enter(target, socket, message.id, message.key, clean(message.name))) {
+        room = target
+        self = message.id
       }
     })
 
@@ -125,10 +150,18 @@ export function createRelay() {
     /** Attach to an HTTP server. Other upgrade requests (like Vite's HMR) are left alone. */
     attach(server: EventEmitter) {
       server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-        if (new URL(req.url ?? '/', 'http://x').pathname !== PATH) return
-        // Only pages served by this host may connect (no cross-site socket hijacking).
-        const origin = req.headers.origin
-        if (origin && new URL(origin).host !== req.headers.host) return void socket.destroy()
+        let path: string
+        let sameSite: boolean
+        try {
+          path = new URL(req.url ?? '/', 'http://x').pathname
+          // Only pages served by this host may connect (no cross-site socket hijacking).
+          const origin = req.headers.origin
+          sameSite = !origin || new URL(origin).host === req.headers.host
+        } catch {
+          return void socket.destroy()
+        }
+        if (path !== PATH) return
+        if (!sameSite) return void socket.destroy()
         wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
       })
     },
@@ -141,8 +174,11 @@ export function createRelay() {
   }
 }
 
+const isToken = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= 64
+
 const clean = (name: unknown) =>
-  String(name ?? '')
+  (typeof name === 'string' ? name : '')
     .replace(/[^\p{L}\p{N} ._-]/gu, '')
     .trim()
     .slice(0, 12) || 'Player'

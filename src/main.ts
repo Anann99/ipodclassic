@@ -22,18 +22,22 @@ new ResizeObserver(([entry]) => {
   if (entry) stage.style.setProperty('--zoom', String(entry.contentRect.width / 320))
 }).observe(screen)
 
-// Finish: Auto follows the system appearance.
+// Finish: Auto follows the system appearance. The browser bar takes the color at the top of
+// the page: the device face on phones, the backdrop elsewhere.
 const dark = matchMedia('(prefers-color-scheme: dark)')
+const phone = matchMedia('(max-width: 540px), (orientation: landscape) and (max-height: 540px)')
 const applyFinish = () => {
   const { finish } = settings.get()
   const resolved = finish === 'auto' ? (dark.matches ? 'graphite' : 'silver') : finish
   root.dataset.finish = resolved
+  const token = phone.matches ? '--face-1' : '--backdrop-1'
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', getComputedStyle(root).getPropertyValue('--face-1').trim())
+    ?.setAttribute('content', getComputedStyle(root).getPropertyValue(token).trim())
 }
 settings.watch(applyFinish)
 dark.addEventListener('change', applyFinish)
+phone.addEventListener('change', applyFinish)
 
 const nav = new Nav(stage)
 
@@ -169,6 +173,12 @@ window.addEventListener('popstate', () => {
   sentinel = false
   nav.input({ type: 'press', button: 'menu' })
   nav.input({ type: 'release', button: 'menu' })
+  // Still inside something: step forward onto the entry again, so the next Back is Menu too.
+  if (nav.depth > 1) {
+    swallow = true
+    sentinel = true
+    history.forward()
+  }
 })
 
 // Invite links (?room=CODE) go straight into that room.

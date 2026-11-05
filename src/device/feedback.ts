@@ -84,7 +84,9 @@ export function tone(...tones: Tone[]): void {
     const start = audio.currentTime + (t.at ?? 0) / 1000
     const end = start + t.ms / 1000
     const gain = audio.createGain()
-    gain.gain.setValueAtTime(t.gain ?? 0.15, start)
+    // A few milliseconds of attack, so tones start without a pop.
+    gain.gain.setValueAtTime(0.0001, start)
+    gain.gain.exponentialRampToValueAtTime(t.gain ?? 0.15, start + 0.003)
     gain.gain.exponentialRampToValueAtTime(0.0001, end)
     gain.connect(audio.destination)
     let source: AudioScheduledSourceNode

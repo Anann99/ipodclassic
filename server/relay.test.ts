@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
+import { MAX_PLAYERS } from '../src/net/protocol.ts'
 import { createRelay, PATH, type ServerMessage } from './relay.ts'
 
 let server: Server
@@ -43,12 +44,12 @@ async function client() {
 
 it('hosts, joins and relays messages both ways', async () => {
   const host = await client()
-  host.send({ t: 'host', id: 'h', name: 'Ann' })
+  host.send({ t: 'host', id: 'h', key: 'k-h', name: 'Ann' })
   const { code } = await host.next('room')
   expect(code).toMatch(/^[A-Z]{4}$/)
 
   const guest = await client()
-  guest.send({ t: 'join', code: code.toLowerCase(), id: 'g', name: 'Bo<b>' })
+  guest.send({ t: 'join', code: code.toLowerCase(), id: 'g', key: 'k-g', name: 'Bo<b>' })
   const joined = await guest.next('room')
   expect(joined.host).toBe('h')
   expect(joined.peers.map((p) => p.name)).toEqual(['Ann', 'Bob'])
@@ -61,16 +62,16 @@ it('hosts, joins and relays messages both ways', async () => {
 
 it('rejects unknown rooms', async () => {
   const c = await client()
-  c.send({ t: 'join', code: 'ZZZZ', id: 'x', name: 'X' })
+  c.send({ t: 'join', code: 'ZZZZ', id: 'x', key: 'k-x', name: 'X' })
   expect(await c.next('error')).toEqual({ t: 'error', reason: 'no-room' })
 })
 
 it('marks a dropped player offline and restores them on rejoin', async () => {
   const host = await client()
-  host.send({ t: 'host', id: 'h', name: 'Ann' })
+  host.send({ t: 'host', id: 'h', key: 'k-h', name: 'Ann' })
   const { code } = await host.next('room')
   const guest = await client()
-  guest.send({ t: 'join', code, id: 'g', name: 'Bo' })
+  guest.send({ t: 'join', code, id: 'g', key: 'k-g', name: 'Bo' })
   await guest.next('room')
   expect((await host.next('peers')).peers).toHaveLength(2)
 
@@ -79,7 +80,7 @@ it('marks a dropped player offline and restores them on rejoin', async () => {
   expect(after.peers.find((p) => p.id === 'g')?.online).toBe(false)
 
   const back = await client()
-  back.send({ t: 'join', code, id: 'g', name: 'Bo' })
+  back.send({ t: 'join', code, id: 'g', key: 'k-g', name: 'Bo' })
   await back.next('room')
   const restored = await host.next('peers')
   expect(restored.peers.find((p) => p.id === 'g')?.online).toBe(true)
@@ -99,4 +100,47 @@ it('refuses sockets opened by pages from another site', async () => {
     ws.once('error', () => done('refused'))
   })
   expect(outcome).toBe('refused')
+})
+
+it('survives malformed messages and handshakes', async () => {
+  const c = await client()
+  for (const raw of ['null', '5', '"x"', '{"t":"host","id":"a","key":"b","name":{"toString":1}}']) {
+    c.ws.send(raw)
+  }
+  c.send({ t: 'join', code: { toString: 1 }, id: 'z', key: 'k', name: 'Z' })
+  const bad = new WebSocket(url, { origin: 'null' })
+  await new Promise((done) => bad.once('error', done).once('open', done))
+  c.send({ t: 'ping' })
+  expect(await c.next('pong')).toEqual({ t: 'pong' })
+})
+
+it('refuses an id that belongs to someone else, and tells a replaced tab', async () => {
+  const host = await client()
+  host.send({ t: 'host', id: 'h', key: 'secret', name: 'Ann' })
+  const { code } = await host.next('room')
+  const thief = await client()
+  thief.send({ t: 'join', code, id: 'h', key: 'guess', name: 'Eve' })
+  expect(await thief.next('error')).toEqual({ t: 'error', reason: 'taken' })
+  const again = await client()
+  again.send({ t: 'join', code, id: 'h', key: 'secret', name: 'Ann' })
+  await again.next('room')
+  expect(await host.next('error')).toEqual({ t: 'error', reason: 'replaced' })
+})
+
+it('counts only connected players toward a full room, reusing seats of those who left', async () => {
+  const host = await client()
+  host.send({ t: 'host', id: 'h', key: 'kh', name: 'Host' })
+  const { code } = await host.next('room')
+  for (let i = 0; i < MAX_PLAYERS + 3; i++) {
+    const guest = await client()
+    guest.send({ t: 'join', code, id: `g${i}`, key: `k${i}`, name: `G${i}` })
+    await guest.next('room')
+    guest.ws.close()
+    await new Promise((done) => guest.ws.once('close', done))
+  }
+  const late = await client()
+  late.send({ t: 'join', code, id: 'late', key: 'kl', name: 'Late' })
+  const room = await late.next('room')
+  expect(room.peers.length).toBeLessThanOrEqual(MAX_PLAYERS)
+  expect(room.peers.some((p) => p.id === 'h')).toBe(true)
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { angleDelta, HOLD_MS, type Input, ringButton, WheelGesture } from './wheel.ts'
+import { angleDelta, type Input, ringButton, TAP_MS, WheelGesture } from './wheel.ts'
 
 const at = (deg: number, r = 0.75) => {
   const a = (deg * Math.PI) / 180
@@ -14,7 +14,7 @@ function drag(g: WheelGesture, from: number, to: number, step = 3): Input[] {
   for (let d = from + dir * step; dir > 0 ? d <= to : d >= to; d += dir * step) {
     out.push(...g.move(1, ...at(d)))
   }
-  out.push(...g.up(1))
+  out.push(...g.up(1, 100))
   return out
 }
 
@@ -54,9 +54,9 @@ describe('WheelGesture', () => {
     expect(turned).toBeCloseTo(Math.PI / 2)
   })
 
-  it('treats a still touch on the ring as a button tap', () => {
+  it('treats a quick still touch on the ring as a button tap', () => {
     const g = new WheelGesture()
-    const events = [...g.down(1, ...at(-90), 0), ...g.up(1)]
+    const events = [...g.down(1, ...at(-90), 0), ...g.up(1, 120)]
     expect(events).toEqual([
       { type: 'press', button: 'menu' },
       { type: 'release', button: 'menu' },
@@ -71,15 +71,23 @@ describe('WheelGesture', () => {
   it('presses the center immediately and releases on lift', () => {
     const g = new WheelGesture()
     expect(g.down(1, 0, 0, 0)).toEqual([{ type: 'press', button: 'select' }])
-    expect(g.up(1)).toEqual([{ type: 'release', button: 'select' }])
+    expect(g.up(1, 50)).toEqual([{ type: 'release', button: 'select' }])
   })
 
-  it('fires a held ring button before release', () => {
+  it('never presses a ring button for a thumb resting on the ring', () => {
     const g = new WheelGesture()
-    g.down(1, ...at(90), 0)
-    expect(g.poll(HOLD_MS - 1)).toEqual([])
-    expect(g.poll(HOLD_MS)).toEqual([{ type: 'press', button: 'play' }])
-    expect(g.up(1)).toEqual([{ type: 'release', button: 'play' }])
+    g.down(1, ...at(-90), 0)
+    g.move(1, ...at(-88))
+    g.move(1, ...at(-91))
+    expect(g.up(1, TAP_MS + 1)).toEqual([])
+  })
+
+  it('counts two fingers on the center as one press', () => {
+    const g = new WheelGesture()
+    expect(g.down(1, 0.05, 0, 0)).toHaveLength(1)
+    expect(g.down(2, -0.05, 0, 5)).toEqual([])
+    expect(g.up(1, 40)).toEqual([])
+    expect(g.up(2, 60)).toEqual([{ type: 'release', button: 'select' }])
   })
 
   it('lets a second finger press the center while the first scrolls', () => {

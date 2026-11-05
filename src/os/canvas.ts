@@ -25,8 +25,29 @@ export function canvas2d(parent: HTMLElement, width = 320, height = 240) {
   }
   const observer = new ResizeObserver(resize)
   observer.observe(canvas)
+  // Moving the window to a sharper display changes the pixel ratio but not the size.
+  let density: MediaQueryList | undefined
+  const watchDensity = () => {
+    density?.removeEventListener('change', onDensity)
+    density = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
+    density.addEventListener('change', onDensity)
+  }
+  const onDensity = () => {
+    resize()
+    watchDensity()
+  }
+  watchDensity()
   resize()
-  return { canvas, ctx, width, height, dispose: () => observer.disconnect() }
+  return {
+    canvas,
+    ctx,
+    width,
+    height,
+    dispose: () => {
+      observer.disconnect()
+      density?.removeEventListener('change', onDensity)
+    },
+  }
 }
 
 /**

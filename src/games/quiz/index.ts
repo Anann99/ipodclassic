@@ -17,6 +17,8 @@ type Wire =
       total: number
       text: string
       answers: string[]
+      /** Milliseconds since the question opened on the referee. */
+      elapsed: number
       players: Player[]
     }
   | {
@@ -40,7 +42,9 @@ function toWire(s: Snapshot): Wire {
   const text = question?.q ?? ''
   const answers = s.order.map((i) => question?.a[i] ?? '')
   const { n, total, players } = s
-  if (s.phase === 'question') return { phase: 'question', n, total, text, answers, players }
+  if (s.phase === 'question') {
+    return { phase: 'question', n, total, text, answers, elapsed: s.elapsed, players }
+  }
   const { correct, picks, gained } = s
   return { phase: 'reveal', n, total, text, answers, correct, picks, gained, players }
 }
@@ -73,8 +77,12 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
   let host: string | undefined
   let roomCode: string | undefined
   let wire: Wire | undefined
-  let note: { text: string; busy?: boolean } | undefined
   let spelling: Letters | undefined
+  // What the screen says instead of the game, worst first.
+  let failure: string | undefined
+  let offline = false
+  let hostAway = false
+  let connecting = false
   let selected = 0
   let picked: number | undefined
   let askedAt = 0
@@ -95,8 +103,10 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
   const draw = () => {
     let screen: Screen
     if (spelling) screen = { kind: 'spell', title: 'Join', letters: spelling }
-    else if (note) screen = { kind: 'note', ...note }
-    else if (!wire) screen = { kind: 'note', text: '', busy: true }
+    else if (failure) screen = { kind: 'note', text: failure }
+    else if (offline) screen = { kind: 'note', text: 'Offline', busy: true }
+    else if (hostAway) screen = { kind: 'note', text: 'Host left' }
+    else if (!wire || connecting) screen = { kind: 'note', text: '', busy: true }
     else if (wire.phase === 'lobby') {
       screen = {
         kind: 'lobby',
@@ -143,13 +153,14 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
     const prev = wire
     wire = next
     if (next.phase === 'question' && (prev?.phase !== 'question' || prev.n !== next.n)) {
-      askedAt = now()
+      askedAt = now() - next.elapsed
       selected = 0
       picked = undefined
       SOUND.ask()
     }
     if (next.phase === 'reveal' && prev?.phase !== 'reveal') {
-      if (picked === undefined || next.picks[me] === undefined) picked = undefined
+      // The referee's record of this player's pick is what counts.
+      picked = next.picks[me]
       if ((next.gained[me] ?? 0) > 0) SOUND.right()
       else SOUND.wrong()
     }
@@ -161,16 +172,15 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
         ctx.save('best', best)
       }
     }
-    if (next.phase === 'lobby') note = undefined
     draw()
   }
 
   /** Referee side: publish the engine state to everyone (and to this screen). */
   const sync = (to?: string) => {
     if (!engine) return
-    const next = toWire(engine.snapshot())
-    const key = JSON.stringify(next)
+    const next = toWire(engine.snapshot(now()))
     if (to) return room?.send({ s: next } satisfies Message, to)
+    const key = JSON.stringify(next.phase === 'question' ? { ...next, elapsed: 0 } : next)
     if (key === lastSent) return
     lastSent = key
     room?.send({ s: next } satisfies Message)
@@ -183,54 +193,59 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
   }
 
   const connect = (joinCode?: string) => {
-    note = { text: '', busy: true }
+    room?.close()
+    spelling = undefined
+    failure = undefined
+    connecting = true
     draw()
-    room = new Room(name, {
+    const current = new Room(name, {
       room: (codeNow, hostId, peers) => {
         roomCode = codeNow
         host = hostId
-        if (role === 'host') {
-          me = room?.id ?? me
-          referee()
-          updatePeers(peers)
-          note = undefined
-          sync()
-        } else {
-          spelling = undefined
-          note = undefined
-          draw()
-        }
+        connecting = false
+        // A host that reconnects keeps its game; only the first connection makes the referee.
+        if (role === 'host' && !engine) referee()
+        updatePeers(peers)
+        draw()
       },
       peers: updatePeers,
       message: (from, data) => {
+        if (typeof data !== 'object' || data === null) return
         const m = data as Message
         if ('s' in m && from === host) receive(m.s)
-        if ('answer' in m && engine) {
+        if ('answer' in m && engine && typeof m.answer === 'object' && m.answer) {
           engine.answer(from, m.answer.n, m.answer.choice, m.answer.elapsed, now())
           engine.update(now())
           sync()
         }
       },
-      offline: (offline) => {
-        note = offline ? { text: 'Offline', busy: true } : undefined
+      offline: (isOffline) => {
+        offline = isOffline
         draw()
       },
       error: (reason) => {
+        if (current !== room) return
         room = undefined
+        connecting = false
         if (reason === 'no-room' && role === 'join' && !wire) {
-          note = undefined
           spelling = new Letters(CODE_LETTERS, CODE_LENGTH)
           draw()
           spelling.reject()
           return
         }
-        note = { text: reason === 'full' ? 'Room full' : 'Room closed' }
+        failure =
+          reason === 'full'
+            ? 'Room full'
+            : reason === 'replaced'
+              ? 'Playing elsewhere'
+              : 'Room closed'
         draw()
       },
     })
-    me = room.id
-    if (joinCode) room.join(joinCode)
-    else room.host()
+    room = current
+    me = current.id
+    if (joinCode) current.join(joinCode)
+    else current.host()
   }
 
   const updatePeers = (peers: Peer[]) => {
@@ -244,8 +259,7 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
       sync()
       for (const p of peers) if (p.online && p.id !== me) sync(p.id)
     } else if (role === 'join') {
-      const hostPeer = peers.find((p) => p.id === host)
-      note = hostPeer && !hostPeer.online ? { text: 'Host left' } : undefined
+      hostAway = peers.some((p) => p.id === host && !p.online)
       draw()
     }
   }

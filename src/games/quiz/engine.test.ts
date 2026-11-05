@@ -93,6 +93,20 @@ describe('QuizEngine', () => {
     expect(s.gained.a).toBe(points(12_000 - LAG_MS, readingMs(bank[s.q]?.q ?? '')))
   })
 
+  it('rejects answers that are not a real pick or time', () => {
+    const quiz = started('a')
+    expect(quiz.answer('a', 0, 4, 100, 100)).toBe(false)
+    expect(quiz.answer('a', 0, 1.5, 100, 100)).toBe(false)
+    expect(quiz.answer('a', 0, 1, Number.NaN, 100)).toBe(false)
+    expect(quiz.answer('a', 0, 1, 100, 100)).toBe(true)
+  })
+
+  it('tells late joiners how long the question has been open', () => {
+    const quiz = started('a')
+    const s = quiz.snapshot(8000)
+    expect(s.phase === 'question' && s.elapsed).toBe(8000)
+  })
+
   it('accepts one answer per player per question', () => {
     const quiz = started('a', 'b')
     expect(quiz.answer('a', 0, 1, 10, 10)).toBe(true)

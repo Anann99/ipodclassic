@@ -6,11 +6,18 @@ import { Menu } from './menu.ts'
 import type { Nav, View } from './nav.ts'
 import { load, save } from './store.ts'
 
-let wakeLock: { release(): Promise<void> } | undefined
+let wakeLock: WakeLockSentinel | undefined
 
+/** Keeps the screen on during play. Browsers drop the lock when the page hides; ask again then. */
 async function stayAwake(on: boolean) {
   try {
-    if (on && !wakeLock) wakeLock = await navigator.wakeLock?.request('screen')
+    if (on && (!wakeLock || wakeLock.released)) {
+      const lock = await navigator.wakeLock?.request('screen')
+      wakeLock = lock
+      lock?.addEventListener('release', () => {
+        if (wakeLock === lock) wakeLock = undefined
+      })
+    }
     if (!on && wakeLock) {
       const lock = wakeLock
       wakeLock = undefined

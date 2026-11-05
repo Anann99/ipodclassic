@@ -26,6 +26,8 @@ export type Snapshot =
       total: number
       q: number
       order: number[]
+      /** Time since the question opened, so late joiners see the true time left. */
+      elapsed: number
       answered: string[]
       players: Player[]
     }
@@ -149,7 +151,11 @@ export class QuizEngine {
       this.phase !== 'question' ||
       n !== this.n ||
       !this.players.has(id) ||
-      this.answers.has(id)
+      this.answers.has(id) ||
+      !Number.isInteger(choice) ||
+      choice < 0 ||
+      choice >= this.order.length ||
+      !Number.isFinite(elapsedMs)
     ) {
       return false
     }
@@ -198,7 +204,7 @@ export class QuizEngine {
     }
   }
 
-  snapshot(): Snapshot {
+  snapshot(now = this.started): Snapshot {
     const players = [...this.players.values()].map((p) => ({ ...p }))
     const base = {
       n: this.n,
@@ -210,7 +216,13 @@ export class QuizEngine {
       case 'lobby':
         return { phase: 'lobby', players }
       case 'question':
-        return { phase: 'question', ...base, answered: [...this.answers.keys()], players }
+        return {
+          phase: 'question',
+          ...base,
+          elapsed: Math.max(0, now - this.started),
+          answered: [...this.answers.keys()],
+          players,
+        }
       case 'reveal':
         return {
           phase: 'reveal',

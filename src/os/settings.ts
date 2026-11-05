@@ -16,7 +16,8 @@ const listeners = new Set<(s: Settings) => void>()
 export const settings = {
   get: (): Readonly<Settings> => current,
   set(patch: Partial<Settings>) {
-    current = { ...current, ...patch }
+    // Merge into what is stored now, so another tab's changes are not written over.
+    current = { ...defaults, ...load<Partial<Settings>>('settings', {}), ...patch }
     save('settings', current)
     for (const listener of listeners) listener(current)
   },
