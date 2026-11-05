@@ -25,7 +25,9 @@ new ResizeObserver(([entry]) => {
 // Finish: Auto follows the system appearance. The browser bar takes the color at the top of
 // the page: the device face on phones, the backdrop elsewhere.
 const dark = matchMedia('(prefers-color-scheme: dark)')
-const phone = matchMedia('(max-width: 540px), (orientation: landscape) and (max-height: 540px)')
+const phone = matchMedia(
+  '(max-width: 540px), (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3 / 2)',
+)
 const applyFinish = () => {
   const { finish } = settings.get()
   const resolved = finish === 'auto' ? (dark.matches ? 'graphite' : 'silver') : finish
@@ -86,7 +88,15 @@ function settingsMenu(): Menu {
       nav.push(
         lettersView(
           'Name',
-          new Letters('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 10, '', true),
+          new Letters(
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            10,
+            playerName()
+              .toUpperCase()
+              .replace(/[^A-Z]/g, '')
+              .slice(0, 10),
+            true,
+          ),
           (value) => {
             settings.set({ name: value.charAt(0) + value.slice(1).toLowerCase() })
             nav.pop()

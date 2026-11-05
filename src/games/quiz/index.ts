@@ -2,6 +2,7 @@ import { tone } from '../../device/feedback.ts'
 import { CODE_LENGTH, CODE_LETTERS, type Peer } from '../../net/protocol.ts'
 import { Room } from '../../net/room.ts'
 import { Letters } from '../../os/letters.ts'
+import { announce } from '../../os/nav.ts'
 import { playerName } from '../../os/settings.ts'
 import type { Art, Game, GameContext, Input, Mode, Session } from '../types.ts'
 import { ANSWER_MS, type Player, QUESTIONS_PER_GAME, QuizEngine, type Snapshot } from './engine.ts'
@@ -157,12 +158,17 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
       selected = 0
       picked = undefined
       SOUND.ask()
+      announce(`${next.text} ${next.answers[0] ?? ''}`)
     }
     if (next.phase === 'reveal' && prev?.phase !== 'reveal') {
       // The referee's record of this player's pick is what counts.
       picked = next.picks[me]
-      if ((next.gained[me] ?? 0) > 0) SOUND.right()
+      const right = (next.gained[me] ?? 0) > 0
+      if (right) SOUND.right()
       else SOUND.wrong()
+      announce(
+        right ? `Correct, +${next.gained[me]}` : `Wrong. ${next.answers[next.correct] ?? ''}`,
+      )
     }
     if (next.phase === 'final' && prev?.phase !== 'final') {
       SOUND.done()
@@ -319,6 +325,7 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
           lobbyIndex = Math.max(0, Math.min(actions().length - 1, lobbyIndex + e.dir))
         } else if (wire?.phase === 'question' && picked === undefined) {
           selected = Math.max(0, Math.min(wire.answers.length - 1, selected + e.dir))
+          announce(wire.answers[selected] ?? '')
         } else return
         draw()
         return
@@ -339,7 +346,7 @@ function start(ctx: GameContext, role: Role, code?: string): Session {
     menu() {
       // While spelling a code, Menu takes back a letter, then leaves.
       if (!spelling) return false
-      if (spelling.input({ type: 'press', button: 'menu' }) === 'empty') ctx.exit()
+      if (spelling.input({ type: 'press', button: 'menu' }) === 'back') ctx.exit()
       else draw()
       return true
     },

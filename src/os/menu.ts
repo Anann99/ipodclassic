@@ -117,8 +117,10 @@ export class Menu implements View {
       return true
     }
     if (e.type === 'press' && e.button === 'select') {
-      this.items[this.index]?.select?.()
+      const item = this.items[this.index]
+      item?.select?.()
       this.update()
+      if (item?.value) announce(`${item.label} ${item.value()}`)
       return true
     }
     return false

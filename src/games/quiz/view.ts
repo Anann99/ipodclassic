@@ -71,8 +71,11 @@ function rows(
   glyph: (i: number) => string = () => '',
 ) {
   const list = make('ul', 'rows')
+  list.setAttribute('role', 'listbox')
   items.forEach((text, i) => {
     const li = make('li', mark(i))
+    li.setAttribute('role', 'option')
+    li.setAttribute('aria-selected', String(/\b(on|right)\b/.test(li.className)))
     li.append(make('span', '', text))
     const g = glyph(i)
     if (g) li.append(make('span', 'glyph', g))
@@ -105,7 +108,7 @@ export class QuizView {
         const middle = make('div', 'middle lobby')
         if (s.code) middle.append(make('div', 'code', s.code))
         const names = make('div', 'names')
-        names.textContent = s.names.join('  ·  ')
+        names.append(...s.names.map((name) => make('span', '', name)))
         middle.append(names)
         if (!s.actions.length) middle.append(make('div', 'pulse'))
         parts.push(bar('Quiz'), middle)

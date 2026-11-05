@@ -30,6 +30,8 @@
   --hi-1: #2f6fe8;
   --hi-2: #1d54c7;
   --hi-ink: #ffffff;
+  --good: #15803d;
+  --gold: #a16207;
 }
 
 :root[data-finish="graphite"] {
@@ -55,6 +57,8 @@
   --hi-1: #2f6fe8;
   --hi-2: #1d54c7;
   --hi-ink: #ffffff;
+  --good: #4ade80;
+  --gold: #fbbf24;
 }
 
 * {
@@ -252,11 +256,11 @@ body {
 }
 
 .rows li.right {
-  background: linear-gradient(#55d08f, #1f9d58);
+  background: linear-gradient(#1f9a55, #15803d);
 }
 
 .rows li.wrong {
-  background: linear-gradient(#ff8a84, #d9443d);
+  background: linear-gradient(#d9443d, #b9302a);
 }
 
 .rows .glyph {
@@ -369,7 +373,7 @@ body {
 
 .bar .gain {
   margin-right: 6px;
-  color: #1f9d58;
+  color: var(--good);
 }
 
 .track {
@@ -442,12 +446,21 @@ body {
   line-height: 1;
 }
 
+/* Each name stays whole on one line; lines break only between names. */
 .names {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 12px;
   max-width: 280px;
   color: var(--dim);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.45;
+}
+
+.names span {
+  white-space: nowrap;
 }
 
 .final .big {
@@ -465,13 +478,19 @@ body {
 }
 
 .final .best {
-  color: #d99a00;
+  color: var(--gold);
 }
 
 .standings li > span.rank {
   flex: none;
   width: 20px;
   color: var(--dim);
+}
+
+.standings li > span.rank + span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .standings li.on > span.rank {
@@ -605,7 +624,7 @@ body {
 
 /* Phones on their side: screen left, wheel right. */
 
-@media (orientation: landscape) and (max-height: 540px) {
+@media (orientation: landscape) and (max-height: 540px) and (min-aspect-ratio: 3 / 2) {
   body {
     background: linear-gradient(165deg, var(--face-1), var(--face-2));
   }
@@ -623,8 +642,9 @@ body {
     box-shadow: none;
   }
 
+  /* The screen takes the height, but never more than 60% of the width: the wheel needs room. */
   .screen {
-    height: calc(100dvh - 40px);
+    height: min(calc(100dvh - 40px), calc((100vw - 42px) * 0.45));
     padding: 6px;
     border-radius: 12px;
   }

@@ -61,7 +61,7 @@ test('two players share a room', async ({ page, browser }) => {
   const guest = await (await browser.newContext()).newPage()
   await guest.goto(`/?room=${code}`)
   await expect(guest.locator('.code')).toHaveText(code)
-  await expect(page.locator('.names')).toContainText('·')
+  await expect(page.locator('.names span')).toHaveCount(2)
 
   await press(page, 'Enter')
   await expect(guest.locator('.ask')).toHaveText((await page.locator('.ask').textContent()) ?? '')
@@ -97,7 +97,7 @@ test('the host keeps the game when its connection drops and returns', async ({ p
   const code = (await page.locator('.code').textContent()) ?? ''
   const guest = await (await browser.newContext()).newPage()
   await guest.goto(`/?room=${code}`)
-  await expect(page.locator('.names')).toContainText('·')
+  await expect(page.locator('.names span')).toHaveCount(2)
   await press(page, 'Enter')
   await expect(page.locator('.bar span').first()).toHaveText('1/10')
   await page.evaluate(() => {
@@ -118,7 +118,7 @@ test('a guest who joins mid-question sees only the time that is left', async ({
   const code = (await page.locator('.code').textContent()) ?? ''
   const early = await (await browser.newContext()).newPage()
   await early.goto(`/?room=${code}`)
-  await expect(page.locator('.names')).toContainText('·')
+  await expect(page.locator('.names span')).toHaveCount(2)
   await press(page, 'Enter')
   await page.waitForTimeout(6000)
   const late = await (await browser.newContext()).newPage()
@@ -175,3 +175,25 @@ test('a second tab takes up settings changed in the first, without replacing the
   )
   expect(after).toMatchObject({ finish: 'silver', name })
 })
+
+const SIZES: [number, number][] = [
+  [1280, 600],
+  [320, 568],
+  [568, 320],
+  [640, 480],
+]
+for (const [width, height] of SIZES) {
+  test(`the whole device fits at ${width}x${height}`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.waitForTimeout(250)
+    const screen = await page.locator('.screen').boundingBox()
+    const wheel = await page.locator('.wheel').boundingBox()
+    if (!screen || !wheel) throw new Error('missing layout')
+    expect(screen.x).toBeGreaterThanOrEqual(0)
+    expect(screen.x + screen.width).toBeLessThanOrEqual(width)
+    expect(screen.y + screen.height).toBeLessThanOrEqual(height)
+    expect(wheel.width).toBeGreaterThanOrEqual(150)
+    expect(wheel.x + wheel.width).toBeLessThanOrEqual(width)
+    expect(wheel.y + wheel.height).toBeLessThanOrEqual(height)
+  })
+}
